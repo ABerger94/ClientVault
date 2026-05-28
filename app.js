@@ -84,6 +84,7 @@ const blankData = () => ({
   questionnaires: [],
   meetings: [],
   notes: [],
+  portalUpdateIds: [],
   audit: [],
 });
 
@@ -156,6 +157,7 @@ function hydrateData(data) {
   next.questionnaires ||= [];
   next.meetings ||= [];
   next.notes ||= [];
+  next.portalUpdateIds ||= [];
   next.audit ||= [];
   return next;
 }
@@ -1871,14 +1873,20 @@ async function syncPortalUpdates(options = {}) {
     });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || "Portal sync failed.");
-    const appliedIds = applyPortalUpdates(result.updates || []);
+    const { appliedIds, clearIds } = applyPortalUpdates(result.updates || []);
     if (appliedIds.length) {
-      await fetch("/api/portal-sync", {
+      await saveData(`Synced ${appliedIds.length} portal update${appliedIds.length === 1 ? "" : "s"}`);
+    }
+    if (clearIds.length) {
+      const clearResponse = await fetch("/api/portal-sync", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ adminSecret, clearIds: appliedIds }),
+        body: JSON.stringify({ adminSecret, clearIds }),
       });
-      await saveData(`Synced ${appliedIds.length} portal update${appliedIds.length === 1 ? "" : "s"}`);
+      const clearResult = await clearResponse.json().catch(() => ({}));
+      if (!clearResponse.ok) throw new Error(clearResult.error || "Portal updates applied but could not be cleared.");
+    }
+    if (appliedIds.length) {
       render();
       showToast(`Synced ${appliedIds.length} portal update${appliedIds.length === 1 ? "" : "s"}.`);
     } else if (!options.silent) {
@@ -1893,7 +1901,14 @@ async function syncPortalUpdates(options = {}) {
 
 function applyPortalUpdates(updates) {
   const applied = [];
+  const clearIds = [];
+  const processed = new Set(state.data.portalUpdateIds || []);
   updates.forEach((update) => {
+    if (!update.id) return;
+    if (processed.has(update.id)) {
+      clearIds.push(update.id);
+      return;
+    }
     const clientId = update.portalId;
     if (!getClient(clientId)) return;
     if (update.type === "meeting_request") {
@@ -1909,6 +1924,7 @@ function applyPortalUpdates(updates) {
       state.data.meetings.push(meeting);
       syncWorkflowFlags("meeting", meeting);
       applied.push(update.id);
+      clearIds.push(update.id);
     }
     if (update.type === "meeting_confirm") {
       const meeting = state.data.meetings.find((item) => item.id === update.payload.meetingId || (
@@ -1920,6 +1936,7 @@ function applyPortalUpdates(updates) {
         meeting.status = "Confirmed";
         syncWorkflowFlags("meeting", meeting);
         applied.push(update.id);
+        clearIds.push(update.id);
       }
     }
     if (update.type === "questionnaire_update") {
@@ -1929,6 +1946,7 @@ function applyPortalUpdates(updates) {
       else state.data.questionnaires.push(next);
       syncWorkflowFlags("questionnaire", next);
       applied.push(update.id);
+      clearIds.push(update.id);
     }
     if (update.type === "support_request") {
       state.data.tasks.push(normalizeRecord("task", {
@@ -1938,16 +1956,21 @@ function applyPortalUpdates(updates) {
         priority: update.payload.priority || "Normal",
       }));
       applied.push(update.id);
+      clearIds.push(update.id);
     }
     if (update.type === "onboarding_step") {
       const checklist = ensureOnboarding(clientId);
       if (update.payload.step) {
         checklist[update.payload.step] = Boolean(update.payload.done);
         applied.push(update.id);
+        clearIds.push(update.id);
       }
     }
   });
-  return applied;
+  if (applied.length) {
+    state.data.portalUpdateIds = [...new Set([...(state.data.portalUpdateIds || []), ...applied])].slice(-500);
+  }
+  return { appliedIds: applied, clearIds };
 }
 
 function buildPortalSnapshot(clientId) {

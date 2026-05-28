@@ -1,7 +1,9 @@
 "use strict";
 
-const STORAGE_KEY = "clientvault.crm.encrypted.v1";
-const PORTAL_ADMIN_SECRET_KEY = "clientvault.portal.adminSecret";
+const LEGACY_STORAGE_KEYS = ["clientvault.crm.encrypted.v1"];
+const STORAGE_KEY = "clientvault.crm.encrypted.v2";
+const LEGACY_PORTAL_ADMIN_SECRET_KEYS = ["clientvault.portal.adminSecret"];
+const PORTAL_ADMIN_SECRET_KEY = "clientvault.portal.adminSecret.v2";
 const AUTO_LOCK_MS = 15 * 60 * 1000;
 const STAGES = ["Lead", "Qualified", "Proposal", "Won"];
 const PRIORITIES = ["Low", "Normal", "High"];
@@ -83,140 +85,10 @@ const blankData = () => ({
   audit: [],
 });
 
-const seedData = () => {
-  const data = blankData();
-  const clientId = id();
-  const contactId = id();
-  data.clients.push({
-    id: clientId,
-    name: "Northstar Advisory",
-    company: "Northstar Advisory",
-    status: "Active",
-    segment: "Consulting",
-    email: "hello@example.com",
-    phone: "(555) 014-0180",
-    website: "https://example.com",
-    value: 24000,
-    owner: "Alek",
-    lastTouch: today(),
-    nextStep: "Send renewal proposal",
-    tags: "retainer, priority",
-    createdAt: new Date().toISOString(),
-  });
-  data.contacts.push({
-    id: contactId,
-    clientId,
-    name: "Morgan Lee",
-    role: "Managing Partner",
-    email: "morgan@example.com",
-    phone: "(555) 014-0198",
-  });
-  data.deals.push({
-    id: id(),
-    clientId,
-    name: "Annual growth retainer",
-    stage: "Proposal",
-    value: 24000,
-    probability: 70,
-    closeDate: addDays(14),
-  });
-  data.projects.push({
-    id: id(),
-    clientId,
-    name: "Website refresh",
-    description: "Update the primary website messaging and lead capture flow.",
-    scope: "Refresh homepage copy, service sections, contact form, and analytics handoff.",
-    roadmap: "Discovery complete\nWireframes in review\nLaunch checklist pending",
-    dueDate: addDays(21),
-    deliverableUrl: "https://example.com",
-    status: "In Progress",
-    feedback: "",
-    createdAt: new Date().toISOString(),
-  });
-  data.onboarding.push({
-    id: id(),
-    clientId,
-    welcomeEmailSent: true,
-    portalAccessGranted: true,
-    welcomeCallScheduled: true,
-    welcomeCallDate: addDays(1) + "T10:00",
-    welcomeCallConfirmed: true,
-    brandAssetsCollected: false,
-    businessGoalsDocumented: true,
-    questionnaireCompleted: false,
-    strategyMeetingHeld: false,
-    strategyMeetingDate: addDays(5) + "T13:00",
-    strategyMeetingConfirmed: false,
-    projectPlanCreated: false,
-    communicationChannelsSet: true,
-    firstProjectCreated: true,
-    initialInvoiceSent: false,
-    retainerAgreementSigned: false,
-    welcomeCallProposedBy: "Agency",
-    welcomeCallHistory: JSON.stringify([
-      {
-        proposedBy: "Agency",
-        datetime: addDays(1) + "T10:00",
-        notes: "Initial kickoff call.",
-        confirmed: true,
-        timestamp: new Date().toISOString(),
-      },
-    ]),
-    strategyMeetingProposedBy: "Agency",
-    meetingProposalHistory: JSON.stringify([
-      {
-        proposedBy: "Agency",
-        datetime: addDays(5) + "T13:00",
-        notes: "Confirm final priority pages and launch timing.",
-        confirmed: false,
-        timestamp: new Date().toISOString(),
-      },
-    ]),
-    notes: "Need logo files and final audience notes.",
-  });
-  data.questionnaires.push({
-    id: id(),
-    clientId,
-    websiteUrl: "https://example.com",
-    targetAudience: "Growing professional services firms.",
-    mainServices: "Strategy retainers and advisory packages.",
-    uniqueValue: "Senior advisory with concise execution support.",
-    primaryGoal: "Get more leads",
-    timeline: "1-3 months",
-    budgetRange: 2500,
-    competitors: "",
-    designStyle: "Professional & corporate",
-    socialMedia: "",
-    additionalNotes: "",
-  });
-  data.meetings.push({
-    id: id(),
-    clientId,
-    type: "Strategy Meeting",
-    title: "Review website refresh scope",
-    datetime: addDays(5) + "T13:00",
-    status: "Proposed",
-    proposedBy: "Agency",
-    notes: "Confirm final priority pages and launch timing.",
-  });
-  data.tasks.push({
-    id: id(),
-    clientId,
-    title: "Review proposal scope",
-    dueDate: addDays(2),
-    priority: "High",
-    done: false,
-  });
-  data.notes.push({
-    id: id(),
-    clientId,
-    body: "Prefers concise weekly summaries and fixed-price scopes.",
-    createdAt: new Date().toISOString(),
-  });
-  return data;
-};
-
 const app = document.querySelector("#app");
+
+LEGACY_STORAGE_KEYS.forEach((key) => localStorage.removeItem(key));
+LEGACY_PORTAL_ADMIN_SECRET_KEYS.forEach((key) => localStorage.removeItem(key));
 
 window.addEventListener("load", render);
 window.addEventListener("mousemove", scheduleAutoLock);
@@ -395,7 +267,7 @@ async function unlock(event) {
       }
       state.salt = crypto.getRandomValues(new Uint8Array(16));
       state.key = await deriveKey(passphrase, state.salt);
-      state.data = seedData();
+      state.data = blankData();
       state.unlocked = true;
       await saveData("Created encrypted vault");
     }

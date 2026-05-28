@@ -58,6 +58,10 @@ export function safeEqual(a, b) {
 }
 
 export async function verifyAdminSecret(secret) {
+  const configuredSecret = process.env.PORTAL_ADMIN_SECRET;
+  if (configuredSecret) {
+    return Boolean(secret) && String(secret) === configuredSecret;
+  }
   const admin = await readJson(ADMIN_PATH);
   if (!admin) {
     if (!secret || secret.length < 12) return false;

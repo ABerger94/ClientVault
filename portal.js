@@ -2,8 +2,10 @@
 
 const portalState = {
   portal: null,
+  auth: null,
   tab: "home",
   error: "",
+  notice: "",
   loading: false,
 };
 
@@ -12,6 +14,8 @@ const portalApp = document.querySelector("#portal-app");
 window.addEventListener("load", () => {
   const cached = sessionStorage.getItem("clientvault.portal");
   if (cached) portalState.portal = JSON.parse(cached);
+  const cachedAuth = sessionStorage.getItem("clientvault.portal.auth");
+  if (cachedAuth) portalState.auth = JSON.parse(cachedAuth);
   renderPortal();
 });
 
@@ -59,11 +63,32 @@ function renderPortal() {
   if (logout) {
     logout.addEventListener("click", () => {
       sessionStorage.removeItem("clientvault.portal");
+      sessionStorage.removeItem("clientvault.portal.auth");
       portalState.portal = null;
+      portalState.auth = null;
       portalState.tab = "home";
       renderPortal();
     });
   }
+  portalApp.querySelectorAll("form[data-action-form]").forEach((form) => {
+    form.addEventListener("submit", submitPortalAction);
+  });
+  portalApp.querySelectorAll("[data-confirm-meeting]").forEach((button) => {
+    button.addEventListener("click", () => submitPortalAction(null, {
+      type: "meeting_confirm",
+      payload: {
+        meetingId: button.dataset.confirmMeeting,
+        meetingType: button.dataset.meetingType,
+        datetime: button.dataset.datetime,
+      },
+    }));
+  });
+  portalApp.querySelectorAll("[data-complete-step]").forEach((button) => {
+    button.addEventListener("click", () => submitPortalAction(null, {
+      type: "onboarding_step",
+      payload: { step: button.dataset.completeStep, done: true },
+    }));
+  });
 }
 
 function loginScreen() {
@@ -108,11 +133,44 @@ async function login(event) {
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || "Could not sign in.");
     portalState.portal = data.portal;
+    portalState.auth = {
+      email: values.email,
+      accessCode: values.accessCode,
+    };
     sessionStorage.setItem("clientvault.portal", JSON.stringify(data.portal));
+    sessionStorage.setItem("clientvault.portal.auth", JSON.stringify(portalState.auth));
   } catch (error) {
     portalState.error = error.message;
   } finally {
     portalState.loading = false;
+    renderPortal();
+  }
+}
+
+async function submitPortalAction(event, directAction = null) {
+  if (event) event.preventDefault();
+  const form = event?.currentTarget;
+  const type = directAction?.type || form.dataset.actionForm;
+  const payload = directAction?.payload || Object.fromEntries(new FormData(form).entries());
+  portalState.notice = "";
+  portalState.error = "";
+  try {
+    const response = await fetch("/api/portal-action", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        ...portalState.auth,
+        type,
+        payload,
+      }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Request failed.");
+    portalState.notice = "Sent. Your provider will see this after their next sync.";
+    if (form) form.reset();
+  } catch (error) {
+    portalState.error = error.message;
+  } finally {
     renderPortal();
   }
 }
@@ -138,6 +196,8 @@ function portalShell() {
         ${tabButton("support", "Support")}
         ${tabButton("files", "Files")}
       </nav>
+      ${portalState.notice ? `<p class="secure-note">${escapeHtml(portalState.notice)}</p>` : ""}
+      ${portalState.error ? `<p class="secure-note danger-note">${escapeHtml(portalState.error)}</p>` : ""}
       <div class="portal-body">${currentTab()}</div>
     </section>
   `;
@@ -236,7 +296,13 @@ function onboardingView() {
               <span class="pill">${(stage.steps || []).filter((step) => step.done).length}/${(stage.steps || []).length}</span>
             </div>
             <div class="checklist">
-              ${(stage.steps || []).map((step) => `<div class="check-row"><input type="checkbox" disabled ${step.done ? "checked" : ""} /><span>${escapeHtml(step.label)}</span></div>`).join("")}
+              ${(stage.steps || []).map((step) => `
+                <div class="check-row">
+                  <input type="checkbox" disabled ${step.done ? "checked" : ""} />
+                  <span>${escapeHtml(step.label)}</span>
+                  ${!step.done ? `<button class="btn secondary mini-btn" data-complete-step="${escapeHtml(step.key)}">Mark Done</button>` : ""}
+                </div>
+              `).join("")}
             </div>
           </div>
         `).join("")}
@@ -271,32 +337,95 @@ function portalMeetingNotice(checklist, meetingType) {
 
 function scheduleView() {
   const meetings = portalState.portal.meetings;
-  if (!meetings.length) return `<div class="empty">No meetings scheduled.</div>`;
-  return meetings.map((meeting) => `
+  return `
+    <section class="panel">
+      <div class="panel-head"><h2>Request Meeting</h2></div>
+      <div class="panel-body">
+        <form data-action-form="meeting_request" class="form-grid">
+          <div class="field">
+            <label>Meeting type</label>
+            <select name="meetingType" required>
+              <option>Welcome Call</option>
+              <option>Strategy Meeting</option>
+              <option>Check-in</option>
+              <option>Review</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Date and time</label>
+            <input name="datetime" type="datetime-local" required />
+          </div>
+          <div class="field span-2">
+            <label>Notes</label>
+            <textarea name="notes" placeholder="Topics, questions, or preferred meeting format"></textarea>
+          </div>
+          <button class="btn span-2" type="submit">Send Meeting Request</button>
+        </form>
+      </div>
+    </section>
+    ${meetings.length ? meetings.map((meeting) => `
     <article class="task-card">
       <strong>${escapeHtml(meeting.title || meeting.type)}</strong>
       <span class="row-sub">${formatDateTime(meeting.datetime)}</span>
       <span class="pill ${meeting.status === "Confirmed" ? "active" : meeting.status === "Canceled" ? "risk" : ""}">${escapeHtml(meeting.status || "Proposed")}</span>
       ${meeting.notes ? `<p class="row-sub">${escapeHtml(meeting.notes)}</p>` : ""}
+      ${meeting.status !== "Confirmed" && meeting.status !== "Canceled" ? `<button class="btn secondary" data-confirm-meeting="${meeting.id}" data-meeting-type="${escapeHtml(meeting.type)}" data-datetime="${escapeHtml(meeting.datetime)}">Confirm This Time</button>` : ""}
     </article>
-  `).join("");
+  `).join("") : `<div class="empty">No meetings scheduled.</div>`}
+  `;
 }
 
 function questionnaireView() {
   const questionnaire = portalState.portal.questionnaire;
-  if (!questionnaire) return `<div class="empty">No questionnaire has been shared yet.</div>`;
   return `
     <section class="panel">
       <div class="panel-head"><h2>Questionnaire</h2></div>
       <div class="panel-body qa-grid">
-        ${qa("Primary goal", questionnaire.primaryGoal)}
-        ${qa("Timeline", questionnaire.timeline)}
-        ${qa("Budget", questionnaire.budgetRange ? money(questionnaire.budgetRange) : "")}
-        ${qa("Design style", questionnaire.designStyle)}
-        ${qa("Target audience", questionnaire.targetAudience)}
-        ${qa("Services", questionnaire.mainServices)}
-        ${qa("Unique value", questionnaire.uniqueValue)}
-        ${qa("Additional notes", questionnaire.additionalNotes)}
+        ${questionnaire ? `
+          ${qa("Primary goal", questionnaire.primaryGoal)}
+          ${qa("Timeline", questionnaire.timeline)}
+          ${qa("Budget", questionnaire.budgetRange ? money(questionnaire.budgetRange) : "")}
+          ${qa("Design style", questionnaire.designStyle)}
+          ${qa("Target audience", questionnaire.targetAudience)}
+          ${qa("Services", questionnaire.mainServices)}
+          ${qa("Unique value", questionnaire.uniqueValue)}
+          ${qa("Additional notes", questionnaire.additionalNotes)}
+        ` : `<div class="empty span-2">No questionnaire has been shared yet.</div>`}
+        <form data-action-form="questionnaire_update" class="form-grid span-2">
+          <div class="field">
+            <label>Primary goal</label>
+            <select name="primaryGoal">
+              <option>Get more leads</option>
+              <option>Increase online sales</option>
+              <option>Build brand awareness</option>
+              <option>Improve online reputation</option>
+              <option>Other</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Timeline</label>
+            <select name="timeline">
+              <option>ASAP</option>
+              <option>Within 1 month</option>
+              <option>1-3 months</option>
+              <option>3-6 months</option>
+              <option>Flexible</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Budget</label>
+            <input name="budgetRange" type="number" value="${escapeHtml(questionnaire?.budgetRange || "")}" />
+          </div>
+          <div class="field">
+            <label>Design style</label>
+            <input name="designStyle" value="${escapeHtml(questionnaire?.designStyle || "")}" />
+          </div>
+          <div class="field span-2"><label>Target audience</label><textarea name="targetAudience">${escapeHtml(questionnaire?.targetAudience || "")}</textarea></div>
+          <div class="field span-2"><label>Services</label><textarea name="mainServices">${escapeHtml(questionnaire?.mainServices || "")}</textarea></div>
+          <div class="field span-2"><label>Unique value</label><textarea name="uniqueValue">${escapeHtml(questionnaire?.uniqueValue || "")}</textarea></div>
+          <div class="field span-2"><label>Additional notes</label><textarea name="additionalNotes">${escapeHtml(questionnaire?.additionalNotes || "")}</textarea></div>
+          <button class="btn span-2" type="submit">Submit Questionnaire Update</button>
+        </form>
       </div>
     </section>
   `;
@@ -308,14 +437,35 @@ function qa(label, value) {
 
 function supportView() {
   const tasks = portalState.portal.tasks;
-  if (!tasks.length) return `<div class="empty">No support requests.</div>`;
-  return tasks.map((task) => `
+  return `
+    <section class="panel">
+      <div class="panel-head"><h2>New Support Request</h2></div>
+      <div class="panel-body">
+        <form data-action-form="support_request" class="form-grid">
+          <div class="field span-2">
+            <label>Request</label>
+            <input name="title" required placeholder="What do you need help with?" />
+          </div>
+          <div class="field">
+            <label>Priority</label>
+            <select name="priority"><option>Normal</option><option>High</option><option>Low</option></select>
+          </div>
+          <div class="field">
+            <label>Due date</label>
+            <input name="dueDate" type="date" />
+          </div>
+          <button class="btn span-2" type="submit">Send Support Request</button>
+        </form>
+      </div>
+    </section>
+    ${tasks.length ? tasks.map((task) => `
     <article class="task-card">
       <strong>${escapeHtml(task.title)}</strong>
       <span class="row-sub">Due ${escapeHtml(task.dueDate || "none")}</span>
       <span class="pill ${task.done ? "active" : task.priority === "High" ? "hot" : ""}">${task.done ? "Complete" : escapeHtml(task.priority || "Normal")}</span>
     </article>
-  `).join("");
+  `).join("") : `<div class="empty">No support requests.</div>`}
+  `;
 }
 
 function filesView() {

@@ -1,4 +1,4 @@
-import { hashSecret, json, portalPath, readBody, readIndex, readJson, safeEqual } from "./_portal-store.js";
+import { authenticatePortalClient, json, portalPath, readBody, readJson } from "./_portal-store.js";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -7,10 +7,8 @@ export default async function handler(req, res) {
 
   try {
     const { email, accessCode } = await readBody(req);
-    const normalizedEmail = String(email || "").trim().toLowerCase();
-    const index = await readIndex();
-    const record = index.clients.find((item) => item.email === normalizedEmail);
-    if (!record || !safeEqual(hashSecret(String(accessCode || ""), record.salt), record.accessHash)) {
+    const record = await authenticatePortalClient(email, accessCode);
+    if (!record) {
       return json(res, 401, { error: "Invalid email or access code." });
     }
 

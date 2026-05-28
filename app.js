@@ -1,6 +1,7 @@
 "use strict";
 
 const STORAGE_KEY = "clientvault.crm.encrypted.v1";
+const PORTAL_ADMIN_SECRET_KEY = "clientvault.portal.adminSecret";
 const AUTO_LOCK_MS = 15 * 60 * 1000;
 const STAGES = ["Lead", "Qualified", "Proposal", "Won"];
 const PRIORITIES = ["Low", "Normal", "High"];
@@ -63,6 +64,7 @@ const state = {
   drawer: null,
   toast: "",
   timer: null,
+  syncing: false,
 };
 
 const blankData = () => ({
@@ -401,6 +403,7 @@ async function unlock(event) {
     showToast("Vault unlocked.");
     scheduleAutoLock();
     render();
+    await autoSyncPortalUpdates();
   } catch {
     showToast("Could not unlock vault. Check the passphrase.");
   }
@@ -634,6 +637,8 @@ function bindShell() {
   if (exportButton) exportButton.addEventListener("click", exportBackup);
   const importInput = app.querySelector("[data-action='import']");
   if (importInput) importInput.addEventListener("change", importBackup);
+  const syncButton = app.querySelector("[data-action='sync-portal']");
+  if (syncButton) syncButton.addEventListener("click", () => syncPortalUpdates());
   const portalClient = app.querySelector("[data-action='portal-client']");
   if (portalClient) {
     portalClient.addEventListener("change", (event) => {
@@ -1512,7 +1517,12 @@ function settingsView() {
         <div class="section-actions settings-actions">
           <button class="btn" data-action="export">Export Encrypted Backup</button>
           <label class="btn secondary">Import Backup<input data-action="import" type="file" accept="application/json" hidden /></label>
+          <button class="btn secondary" data-action="sync-portal">Sync Portal Updates</button>
         </div>
+        <form data-form="portalSecret" class="form-grid portal-secret-form">
+          ${input("adminSecret", "Portal admin secret for automatic sync", localStorage.getItem(PORTAL_ADMIN_SECRET_KEY) || "", true, "password", "span-2")}
+          <button class="btn span-2" type="submit">Save Sync Secret</button>
+        </form>
         <p><strong>Records:</strong> ${state.data.clients.length} clients, ${state.data.contacts.length} contacts, ${state.data.deals.length} deals, ${state.data.tasks.length} tasks, ${state.data.notes.length} notes.</p>
         <p><strong>Last saved:</strong> ${escapeHtml(saved.savedAt || "Unknown")}</p>
         <p><strong>Auto-lock:</strong> 15 minutes of inactivity.</p>
@@ -1809,6 +1819,10 @@ async function submitForm(event) {
   const form = event.currentTarget;
   const type = form.dataset.form;
   const values = Object.fromEntries(new FormData(form).entries());
+  if (type === "portalSecret") {
+    savePortalAdminSecret(event);
+    return;
+  }
   if (type === "portalAccess") {
     await publishPortalAccess(values);
     return;
@@ -1904,6 +1918,7 @@ async function publishPortalAccess(values) {
     });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || "Portal publish failed.");
+    localStorage.setItem(PORTAL_ADMIN_SECRET_KEY, values.adminSecret);
     state.drawer = null;
     await saveData(`Published portal for ${client.name}`);
     showToast(`Portal published. Client login: ${location.origin}${result.portalUrl}`);
@@ -1911,6 +1926,114 @@ async function publishPortalAccess(values) {
   } catch (error) {
     showToast(error.message);
   }
+}
+
+async function savePortalAdminSecret(event) {
+  event.preventDefault();
+  const values = Object.fromEntries(new FormData(event.currentTarget).entries());
+  localStorage.setItem(PORTAL_ADMIN_SECRET_KEY, values.adminSecret);
+  showToast("Portal sync secret saved locally.");
+  await syncPortalUpdates();
+}
+
+async function autoSyncPortalUpdates() {
+  if (!localStorage.getItem(PORTAL_ADMIN_SECRET_KEY)) return;
+  await syncPortalUpdates({ silent: true });
+}
+
+async function syncPortalUpdates(options = {}) {
+  const adminSecret = localStorage.getItem(PORTAL_ADMIN_SECRET_KEY);
+  if (!adminSecret) {
+    if (!options.silent) showToast("Save your portal admin secret in Settings before syncing.");
+    return;
+  }
+  if (state.syncing) return;
+  state.syncing = true;
+  try {
+    const response = await fetch("/api/portal-sync", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ adminSecret }),
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "Portal sync failed.");
+    const appliedIds = applyPortalUpdates(result.updates || []);
+    if (appliedIds.length) {
+      await fetch("/api/portal-sync", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ adminSecret, clearIds: appliedIds }),
+      });
+      await saveData(`Synced ${appliedIds.length} portal update${appliedIds.length === 1 ? "" : "s"}`);
+      render();
+      showToast(`Synced ${appliedIds.length} portal update${appliedIds.length === 1 ? "" : "s"}.`);
+    } else if (!options.silent) {
+      showToast("No portal updates to sync.");
+    }
+  } catch (error) {
+    if (!options.silent) showToast(error.message);
+  } finally {
+    state.syncing = false;
+  }
+}
+
+function applyPortalUpdates(updates) {
+  const applied = [];
+  updates.forEach((update) => {
+    const clientId = update.portalId;
+    if (!getClient(clientId)) return;
+    if (update.type === "meeting_request") {
+      const meeting = normalizeRecord("meeting", {
+        clientId,
+        type: update.payload.meetingType || "Strategy Meeting",
+        title: update.payload.title || `${update.payload.meetingType || "Strategy Meeting"} request`,
+        datetime: update.payload.datetime,
+        status: "Proposed",
+        proposedBy: "Client",
+        notes: update.payload.notes || "",
+      });
+      state.data.meetings.push(meeting);
+      syncWorkflowFlags("meeting", meeting);
+      applied.push(update.id);
+    }
+    if (update.type === "meeting_confirm") {
+      const meeting = state.data.meetings.find((item) => item.id === update.payload.meetingId || (
+        item.clientId === clientId &&
+        item.type === update.payload.meetingType &&
+        item.datetime === update.payload.datetime
+      ));
+      if (meeting) {
+        meeting.status = "Confirmed";
+        syncWorkflowFlags("meeting", meeting);
+        applied.push(update.id);
+      }
+    }
+    if (update.type === "questionnaire_update") {
+      const existing = state.data.questionnaires.find((item) => item.clientId === clientId);
+      const next = normalizeRecord("questionnaire", { clientId, ...update.payload }, existing || {});
+      if (existing) Object.assign(existing, next);
+      else state.data.questionnaires.push(next);
+      syncWorkflowFlags("questionnaire", next);
+      applied.push(update.id);
+    }
+    if (update.type === "support_request") {
+      state.data.tasks.push(normalizeRecord("task", {
+        clientId,
+        title: update.payload.title || "Client support request",
+        dueDate: update.payload.dueDate || today(),
+        priority: update.payload.priority || "Normal",
+      }));
+      applied.push(update.id);
+    }
+    if (update.type === "onboarding_step") {
+      const checklist = ensureOnboarding(clientId);
+      if (update.payload.step) {
+        checklist[update.payload.step] = Boolean(update.payload.done);
+        applied.push(update.id);
+      }
+    }
+  });
+  return applied;
 }
 
 function buildPortalSnapshot(clientId) {

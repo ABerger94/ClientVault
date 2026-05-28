@@ -3,6 +3,7 @@ import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 
 const INDEX_PATH = "portal/index.json";
 const ADMIN_PATH = "portal/admin.json";
+const UPDATES_PATH = "portal/updates.json";
 
 export function json(res, status, body) {
   res.statusCode = status;
@@ -75,4 +76,33 @@ export async function writeIndex(index) {
 
 export function portalPath(portalId) {
   return `portal/clients/${portalId}.json`;
+}
+
+export async function authenticatePortalClient(email, accessCode) {
+  const normalizedEmail = String(email || "").trim().toLowerCase();
+  const index = await readIndex();
+  const record = index.clients.find((item) => item.email === normalizedEmail);
+  if (!record || !safeEqual(hashSecret(String(accessCode || ""), record.salt), record.accessHash)) {
+    return null;
+  }
+  return record;
+}
+
+export async function readUpdates() {
+  return await readJson(UPDATES_PATH, { updates: [] });
+}
+
+export async function writeUpdates(updates) {
+  await writeJson(UPDATES_PATH, updates);
+}
+
+export async function appendUpdate(update) {
+  const updates = await readUpdates();
+  updates.updates.push({
+    id: randomBytes(12).toString("hex"),
+    createdAt: new Date().toISOString(),
+    ...update,
+  });
+  await writeUpdates(updates);
+  return updates;
 }

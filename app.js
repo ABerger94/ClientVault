@@ -6,18 +6,49 @@ const STAGES = ["Lead", "Qualified", "Proposal", "Won"];
 const PRIORITIES = ["Low", "Normal", "High"];
 const PROJECT_STATUSES = ["Not Started", "In Progress", "Review", "Approved", "Delivered"];
 const MEETING_TYPES = ["Welcome Call", "Strategy Meeting", "Check-in", "Review"];
-const ONBOARDING_STEPS = [
-  ["welcomeEmailSent", "Welcome email sent"],
-  ["portalAccessGranted", "Portal access granted"],
-  ["welcomeCallScheduled", "Welcome/kickoff call scheduled"],
-  ["brandAssetsCollected", "Brand assets collected"],
-  ["businessGoalsDocumented", "Business goals documented"],
-  ["questionnaireCompleted", "Questionnaire completed"],
-  ["strategyMeetingHeld", "Strategy planning meeting held"],
-  ["projectPlanCreated", "Project plan and scope created"],
-  ["communicationChannelsSet", "Communication channels set"],
-  ["firstProjectCreated", "First project created"],
+const ONBOARDING_STAGES = [
+  {
+    id: "welcome",
+    title: "Welcome",
+    description: "Give the client access and align on kickoff.",
+    steps: [
+      ["welcomeEmailSent", "Welcome email sent"],
+      ["portalAccessGranted", "Portal access granted"],
+      ["welcomeCallScheduled", "Welcome/kickoff call scheduled"],
+    ],
+  },
+  {
+    id: "discovery",
+    title: "Discovery",
+    description: "Collect context before planning the work.",
+    steps: [
+      ["brandAssetsCollected", "Brand assets collected"],
+      ["businessGoalsDocumented", "Business goals documented"],
+      ["questionnaireCompleted", "Questionnaire completed"],
+    ],
+  },
+  {
+    id: "strategy",
+    title: "Strategy",
+    description: "Confirm the plan, scope, and communication path.",
+    steps: [
+      ["strategyMeetingHeld", "Strategy planning meeting held"],
+      ["projectPlanCreated", "Project plan and scope created"],
+      ["communicationChannelsSet", "Communication channels set"],
+    ],
+  },
+  {
+    id: "launch",
+    title: "Launch",
+    description: "Move from onboarding into active delivery.",
+    steps: [
+      ["firstProjectCreated", "First project created"],
+      ["initialInvoiceSent", "Initial setup invoice sent"],
+      ["retainerAgreementSigned", "Retainer agreement signed"],
+    ],
+  },
 ];
+const ONBOARDING_STEPS = ONBOARDING_STAGES.flatMap((stage) => stage.steps);
 
 const state = {
   entry: "",
@@ -117,6 +148,28 @@ const seedData = () => {
     projectPlanCreated: false,
     communicationChannelsSet: true,
     firstProjectCreated: true,
+    initialInvoiceSent: false,
+    retainerAgreementSigned: false,
+    welcomeCallProposedBy: "Agency",
+    welcomeCallHistory: JSON.stringify([
+      {
+        proposedBy: "Agency",
+        datetime: addDays(1) + "T10:00",
+        notes: "Initial kickoff call.",
+        confirmed: true,
+        timestamp: new Date().toISOString(),
+      },
+    ]),
+    strategyMeetingProposedBy: "Agency",
+    meetingProposalHistory: JSON.stringify([
+      {
+        proposedBy: "Agency",
+        datetime: addDays(5) + "T13:00",
+        notes: "Confirm final priority pages and launch timing.",
+        confirmed: false,
+        timestamp: new Date().toISOString(),
+      },
+    ]),
     notes: "Need logo files and final audience notes.",
   });
   data.questionnaires.push({
@@ -526,7 +579,11 @@ function bindShell() {
   });
   app.querySelectorAll("[data-open]").forEach((button) => {
     button.addEventListener("click", () => {
-      state.drawer = { type: button.dataset.open, clientId: button.dataset.client || "" };
+      state.drawer = {
+        type: button.dataset.open,
+        clientId: button.dataset.client || "",
+        meetingType: button.dataset.meetingType || "",
+      };
       render();
     });
   });
@@ -1103,24 +1160,68 @@ function onboardingCard(client) {
       </div>
       <div class="panel-body">
         <div class="progress"><span style="width:${percent}%"></span></div>
-        <div class="checklist">
-          ${ONBOARDING_STEPS.map(([key, label]) => `
-            <label class="check-row">
-              <input type="checkbox" data-onboarding="${client.id}" data-step="${key}" ${checklist?.[key] ? "checked" : ""} />
-              <span>${escapeHtml(label)}</span>
-            </label>
-          `).join("")}
-        </div>
-        ${checklist?.strategyMeetingDate ? `<p class="secure-note">Strategy meeting: ${formatDateTime(checklist.strategyMeetingDate)}${checklist.strategyMeetingConfirmed ? " confirmed" : " proposed"}</p>` : ""}
+        ${onboardingStageBlocks(client, checklist)}
+        ${meetingProposalNotice(checklist, "welcome")}
+        ${meetingProposalNotice(checklist, "strategy")}
         ${questionnaire ? `<p class="row-sub">Questionnaire: ${escapeHtml(questionnaire.primaryGoal || "Goal not set")} · ${escapeHtml(questionnaire.timeline || "Timeline not set")}</p>` : `<p class="row-sub">No questionnaire captured yet.</p>`}
         <div class="inline-actions">
-          <button class="btn secondary" data-open="meeting" data-client="${client.id}">Meeting</button>
+          <button class="btn secondary" data-open="meeting" data-client="${client.id}" data-meeting-type="Welcome Call">Welcome Call</button>
+          <button class="btn secondary" data-open="meeting" data-client="${client.id}" data-meeting-type="Strategy Meeting">Strategy Meeting</button>
           <button class="btn secondary" data-open="questionnaire" data-client="${client.id}">Questionnaire</button>
           <button class="btn secondary" data-edit="onboarding" data-id="${checklist?.id || ""}" data-client="${client.id}">${checklist ? "Edit" : "Create"}</button>
         </div>
       </div>
     </section>
   `;
+}
+
+function onboardingStageBlocks(client, checklist) {
+  return ONBOARDING_STAGES.map((stage) => {
+    const done = stage.steps.filter(([key]) => Boolean(checklist?.[key])).length;
+    return `
+      <div class="onboarding-stage">
+        <div class="onboarding-stage-head">
+          <div>
+            <strong>${escapeHtml(stage.title)}</strong>
+            <p class="row-sub">${escapeHtml(stage.description)}</p>
+          </div>
+          <span class="pill">${done}/${stage.steps.length}</span>
+        </div>
+        <div class="checklist">
+          ${stage.steps.map(([key, label]) => `
+            <label class="check-row">
+              <input type="checkbox" data-onboarding="${client.id}" data-step="${key}" ${checklist?.[key] ? "checked" : ""} />
+              <span>${escapeHtml(label)}</span>
+            </label>
+          `).join("")}
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+function meetingProposalNotice(checklist, meetingType) {
+  if (!checklist) return "";
+  const config = meetingType === "welcome"
+    ? {
+        label: "Welcome call",
+        date: checklist.welcomeCallDate,
+        proposedBy: checklist.welcomeCallProposedBy,
+        confirmed: checklist.welcomeCallConfirmed,
+      }
+    : {
+        label: "Strategy meeting",
+        date: checklist.strategyMeetingDate,
+        proposedBy: checklist.strategyMeetingProposedBy,
+        confirmed: checklist.strategyMeetingConfirmed,
+      };
+  if (!config.date) return "";
+  const status = config.confirmed
+    ? "confirmed"
+    : config.proposedBy === "Client"
+      ? "awaiting your confirmation"
+      : "awaiting client confirmation";
+  return `<p class="secure-note">${config.label}: ${formatDateTime(config.date)} · ${escapeHtml(status)}</p>`;
 }
 
 function projectsView() {
@@ -1523,16 +1624,25 @@ function onboardingForm() {
     <form data-form="onboarding" class="form-grid">
       ${select("clientId", "Client", state.data.clients.map((c) => [c.id, c.name]), checklist.clientId)}
       ${input("welcomeCallDate", "Welcome call", checklist.welcomeCallDate || "", false, "datetime-local")}
+      ${select("welcomeCallProposedBy", "Welcome call proposed by", ["Agency", "Client"], checklist.welcomeCallProposedBy || "Agency")}
       ${select("welcomeCallConfirmed", "Welcome call confirmed", [["false", "No"], ["true", "Yes"]], String(Boolean(checklist.welcomeCallConfirmed)))}
       ${input("strategyMeetingDate", "Strategy meeting", checklist.strategyMeetingDate || "", false, "datetime-local")}
+      ${select("strategyMeetingProposedBy", "Strategy meeting proposed by", ["Agency", "Client"], checklist.strategyMeetingProposedBy || "Agency")}
       ${select("strategyMeetingConfirmed", "Strategy meeting confirmed", [["false", "No"], ["true", "Yes"]], String(Boolean(checklist.strategyMeetingConfirmed)))}
       ${textarea("notes", "Internal onboarding notes", checklist.notes, "span-2")}
+      ${textarea("welcomeCallHistory", "Welcome call proposal history", checklist.welcomeCallHistory || "[]", "span-2")}
+      ${textarea("meetingProposalHistory", "Strategy meeting proposal history", checklist.meetingProposalHistory || "[]", "span-2")}
       <div class="span-2 form-checks">
-        ${ONBOARDING_STEPS.map(([key, label]) => `
-          <label class="check-row">
-            <input type="checkbox" name="${key}" value="true" ${checklist[key] ? "checked" : ""} />
-            <span>${escapeHtml(label)}</span>
-          </label>
+        ${ONBOARDING_STAGES.map((stage) => `
+          <div class="onboarding-stage">
+            <div class="onboarding-stage-head"><strong>${escapeHtml(stage.title)}</strong><span class="pill">${stage.steps.length} steps</span></div>
+            ${stage.steps.map(([key, label]) => `
+              <label class="check-row">
+                <input type="checkbox" name="${key}" value="true" ${checklist[key] ? "checked" : ""} />
+                <span>${escapeHtml(label)}</span>
+              </label>
+            `).join("")}
+          </div>
         `).join("")}
       </div>
       <button class="btn span-2" type="submit">Save Checklist</button>
@@ -1598,10 +1708,11 @@ function projectForm() {
 
 function meetingForm() {
   const meeting = { clientId: state.drawer.clientId, ...record("meetings") };
+  const defaultType = state.drawer.meetingType || meeting.type || "Strategy Meeting";
   return `
     <form data-form="meeting" class="form-grid">
       ${select("clientId", "Client", state.data.clients.map((c) => [c.id, c.name]), meeting.clientId)}
-      ${select("type", "Type", MEETING_TYPES, meeting.type || "Strategy Meeting")}
+      ${select("type", "Type", MEETING_TYPES, defaultType)}
       ${input("title", "Title", meeting.title, true)}
       ${input("datetime", "Date and time", meeting.datetime || "", true, "datetime-local")}
       ${select("status", "Status", ["Proposed", "Confirmed", "Completed", "Canceled"], meeting.status || "Proposed")}
@@ -1752,6 +1863,8 @@ function normalizeRecord(type, values, existing = {}) {
     });
     base.welcomeCallConfirmed = values.welcomeCallConfirmed === "true";
     base.strategyMeetingConfirmed = values.strategyMeetingConfirmed === "true";
+    base.welcomeCallHistory = safeHistoryJson(base.welcomeCallHistory);
+    base.meetingProposalHistory = safeHistoryJson(base.meetingProposalHistory);
   }
   if (type === "questionnaire") {
     base.budgetRange = Number(base.budgetRange || 0);
@@ -1823,10 +1936,68 @@ function buildPortalSnapshot(clientId) {
     onboarding: checklist
       ? {
           notes: checklist.notes || "",
+          welcomeCallDate: checklist.welcomeCallDate || "",
+          welcomeCallConfirmed: Boolean(checklist.welcomeCallConfirmed),
+          welcomeCallProposedBy: checklist.welcomeCallProposedBy || "",
+          welcomeCallHistory: safeHistoryJson(checklist.welcomeCallHistory),
+          strategyMeetingDate: checklist.strategyMeetingDate || "",
+          strategyMeetingConfirmed: Boolean(checklist.strategyMeetingConfirmed),
+          strategyMeetingProposedBy: checklist.strategyMeetingProposedBy || "",
+          meetingProposalHistory: safeHistoryJson(checklist.meetingProposalHistory),
+          stages: ONBOARDING_STAGES.map((stage) => ({
+            id: stage.id,
+            title: stage.title,
+            description: stage.description,
+            steps: stage.steps.map(([key, label]) => ({
+              key,
+              label,
+              done: Boolean(checklist[key]),
+            })),
+          })),
           steps: Object.fromEntries(ONBOARDING_STEPS.map(([key, label]) => [label, Boolean(checklist[key])])),
         }
       : null,
   };
+}
+
+function safeHistoryJson(value) {
+  if (!value) return "[]";
+  try {
+    const parsed = JSON.parse(value);
+    return JSON.stringify(Array.isArray(parsed) ? parsed : []);
+  } catch {
+    return "[]";
+  }
+}
+
+function appendMeetingHistory(checklist, meetingType, entry) {
+  const field = meetingType === "Welcome Call" ? "welcomeCallHistory" : "meetingProposalHistory";
+  let history = [];
+  try {
+    history = JSON.parse(checklist[field] || "[]");
+  } catch {
+    history = [];
+  }
+  history.push({
+    proposedBy: entry.proposedBy || "Agency",
+    datetime: entry.datetime,
+    notes: entry.notes || "",
+    confirmed: Boolean(entry.confirmed),
+    timestamp: new Date().toISOString(),
+  });
+  checklist[field] = JSON.stringify(history);
+}
+
+function confirmLatestMeetingHistory(checklist, meetingType) {
+  const field = meetingType === "Welcome Call" ? "welcomeCallHistory" : "meetingProposalHistory";
+  let history = [];
+  try {
+    history = JSON.parse(checklist[field] || "[]");
+  } catch {
+    history = [];
+  }
+  if (history.length) history[history.length - 1].confirmed = true;
+  checklist[field] = JSON.stringify(history);
 }
 
 function syncWorkflowFlags(type, record) {
@@ -1844,12 +2015,26 @@ function syncWorkflowFlags(type, record) {
     if (record.type === "Welcome Call") {
       checklist.welcomeCallScheduled = record.status !== "Canceled";
       checklist.welcomeCallDate = record.datetime;
+      checklist.welcomeCallProposedBy = record.proposedBy || "Agency";
       checklist.welcomeCallConfirmed = record.status === "Confirmed" || record.status === "Completed";
+      appendMeetingHistory(checklist, record.type, {
+        proposedBy: checklist.welcomeCallProposedBy,
+        datetime: record.datetime,
+        notes: record.notes,
+        confirmed: checklist.welcomeCallConfirmed,
+      });
     }
     if (record.type === "Strategy Meeting") {
       checklist.strategyMeetingDate = record.datetime;
+      checklist.strategyMeetingProposedBy = record.proposedBy || "Agency";
       checklist.strategyMeetingConfirmed = record.status === "Confirmed" || record.status === "Completed";
       checklist.strategyMeetingHeld = record.status === "Completed";
+      appendMeetingHistory(checklist, record.type, {
+        proposedBy: checklist.strategyMeetingProposedBy,
+        datetime: record.datetime,
+        notes: record.notes,
+        confirmed: checklist.strategyMeetingConfirmed,
+      });
     }
   }
 }
@@ -1929,6 +2114,10 @@ async function confirmMeeting(meetingId) {
   if (!meeting) return;
   meeting.status = "Confirmed";
   syncWorkflowFlags("meeting", meeting);
+  const checklist = getOnboarding(meeting.clientId);
+  if (checklist && (meeting.type === "Welcome Call" || meeting.type === "Strategy Meeting")) {
+    confirmLatestMeetingHistory(checklist, meeting.type);
+  }
   await saveData("Confirmed meeting");
   render();
 }

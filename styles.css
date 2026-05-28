@@ -574,6 +574,27 @@ textarea:focus {
   margin-bottom: 14px;
 }
 
+.onboarding-stage {
+  display: grid;
+  gap: 9px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fbfcfd;
+  margin-bottom: 10px;
+}
+
+.onboarding-stage-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.onboarding-stage-head p {
+  margin: 3px 0 0;
+}
+
 .check-row {
   display: flex;
   align-items: flex-start;

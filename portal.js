@@ -215,21 +215,58 @@ function projectCards(projects) {
 function onboardingView() {
   const checklist = portalState.portal.onboarding;
   if (!checklist) return `<div class="empty">No onboarding checklist has been shared yet.</div>`;
-  const steps = Object.entries(checklist.steps || {});
-  const complete = steps.filter(([, done]) => done).length;
-  const percent = steps.length ? Math.round((complete / steps.length) * 100) : 0;
+  const stages = checklist.stages || [];
+  const allSteps = stages.flatMap((stage) => stage.steps || []);
+  const complete = allSteps.filter((step) => step.done).length;
+  const percent = allSteps.length ? Math.round((complete / allSteps.length) * 100) : 0;
   return `
     <section class="panel">
       <div class="panel-head"><h2>Onboarding Progress</h2><span class="pill active">${percent}%</span></div>
       <div class="panel-body">
         <div class="progress"><span style="width:${percent}%"></span></div>
-        <div class="checklist">
-          ${steps.map(([label, done]) => `<div class="check-row"><input type="checkbox" disabled ${done ? "checked" : ""} /><span>${escapeHtml(label)}</span></div>`).join("")}
-        </div>
+        ${portalMeetingNotice(checklist, "welcome")}
+        ${portalMeetingNotice(checklist, "strategy")}
+        ${stages.map((stage) => `
+          <div class="onboarding-stage">
+            <div class="onboarding-stage-head">
+              <div>
+                <strong>${escapeHtml(stage.title)}</strong>
+                <p class="row-sub">${escapeHtml(stage.description)}</p>
+              </div>
+              <span class="pill">${(stage.steps || []).filter((step) => step.done).length}/${(stage.steps || []).length}</span>
+            </div>
+            <div class="checklist">
+              ${(stage.steps || []).map((step) => `<div class="check-row"><input type="checkbox" disabled ${step.done ? "checked" : ""} /><span>${escapeHtml(step.label)}</span></div>`).join("")}
+            </div>
+          </div>
+        `).join("")}
         ${checklist.notes ? `<p class="secure-note">${escapeHtml(checklist.notes)}</p>` : ""}
       </div>
     </section>
   `;
+}
+
+function portalMeetingNotice(checklist, meetingType) {
+  const config = meetingType === "welcome"
+    ? {
+        label: "Welcome call",
+        date: checklist.welcomeCallDate,
+        confirmed: checklist.welcomeCallConfirmed,
+        proposedBy: checklist.welcomeCallProposedBy,
+      }
+    : {
+        label: "Strategy meeting",
+        date: checklist.strategyMeetingDate,
+        confirmed: checklist.strategyMeetingConfirmed,
+        proposedBy: checklist.strategyMeetingProposedBy,
+      };
+  if (!config.date) return "";
+  const status = config.confirmed
+    ? "confirmed"
+    : config.proposedBy === "Client"
+      ? "pending agency confirmation"
+      : "awaiting your confirmation";
+  return `<p class="secure-note">${escapeHtml(config.label)}: ${formatDateTime(config.date)} · ${escapeHtml(status)}</p>`;
 }
 
 function scheduleView() {

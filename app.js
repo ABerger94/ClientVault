@@ -1,0 +1,1592 @@
+"use strict";
+
+const STORAGE_KEY = "clientvault.crm.encrypted.v1";
+const AUTO_LOCK_MS = 15 * 60 * 1000;
+const STAGES = ["Lead", "Qualified", "Proposal", "Won"];
+const PRIORITIES = ["Low", "Normal", "High"];
+const PROJECT_STATUSES = ["Not Started", "In Progress", "Review", "Approved", "Delivered"];
+const MEETING_TYPES = ["Welcome Call", "Strategy Meeting", "Check-in", "Review"];
+const ONBOARDING_STEPS = [
+  ["welcomeEmailSent", "Welcome email sent"],
+  ["portalAccessGranted", "Portal access granted"],
+  ["welcomeCallScheduled", "Welcome/kickoff call scheduled"],
+  ["brandAssetsCollected", "Brand assets collected"],
+  ["businessGoalsDocumented", "Business goals documented"],
+  ["questionnaireCompleted", "Questionnaire completed"],
+  ["strategyMeetingHeld", "Strategy planning meeting held"],
+  ["projectPlanCreated", "Project plan and scope created"],
+  ["communicationChannelsSet", "Communication channels set"],
+  ["firstProjectCreated", "First project created"],
+];
+
+const state = {
+  unlocked: false,
+  key: null,
+  salt: null,
+  data: null,
+  view: "dashboard",
+  query: "",
+  drawer: null,
+  toast: "",
+  timer: null,
+};
+
+const blankData = () => ({
+  version: 1,
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
+  clients: [],
+  contacts: [],
+  deals: [],
+  projects: [],
+  tasks: [],
+  onboarding: [],
+  questionnaires: [],
+  meetings: [],
+  notes: [],
+  audit: [],
+});
+
+const seedData = () => {
+  const data = blankData();
+  const clientId = id();
+  const contactId = id();
+  data.clients.push({
+    id: clientId,
+    name: "Northstar Advisory",
+    company: "Northstar Advisory",
+    status: "Active",
+    segment: "Consulting",
+    email: "hello@example.com",
+    phone: "(555) 014-0180",
+    website: "https://example.com",
+    value: 24000,
+    owner: "Alek",
+    lastTouch: today(),
+    nextStep: "Send renewal proposal",
+    tags: "retainer, priority",
+    createdAt: new Date().toISOString(),
+  });
+  data.contacts.push({
+    id: contactId,
+    clientId,
+    name: "Morgan Lee",
+    role: "Managing Partner",
+    email: "morgan@example.com",
+    phone: "(555) 014-0198",
+  });
+  data.deals.push({
+    id: id(),
+    clientId,
+    name: "Annual growth retainer",
+    stage: "Proposal",
+    value: 24000,
+    probability: 70,
+    closeDate: addDays(14),
+  });
+  data.projects.push({
+    id: id(),
+    clientId,
+    name: "Website refresh",
+    description: "Update the primary website messaging and lead capture flow.",
+    scope: "Refresh homepage copy, service sections, contact form, and analytics handoff.",
+    roadmap: "Discovery complete\nWireframes in review\nLaunch checklist pending",
+    dueDate: addDays(21),
+    deliverableUrl: "https://example.com",
+    status: "In Progress",
+    feedback: "",
+    createdAt: new Date().toISOString(),
+  });
+  data.onboarding.push({
+    id: id(),
+    clientId,
+    welcomeEmailSent: true,
+    portalAccessGranted: true,
+    welcomeCallScheduled: true,
+    welcomeCallDate: addDays(1) + "T10:00",
+    welcomeCallConfirmed: true,
+    brandAssetsCollected: false,
+    businessGoalsDocumented: true,
+    questionnaireCompleted: false,
+    strategyMeetingHeld: false,
+    strategyMeetingDate: addDays(5) + "T13:00",
+    strategyMeetingConfirmed: false,
+    projectPlanCreated: false,
+    communicationChannelsSet: true,
+    firstProjectCreated: true,
+    notes: "Need logo files and final audience notes.",
+  });
+  data.questionnaires.push({
+    id: id(),
+    clientId,
+    websiteUrl: "https://example.com",
+    targetAudience: "Growing professional services firms.",
+    mainServices: "Strategy retainers and advisory packages.",
+    uniqueValue: "Senior advisory with concise execution support.",
+    primaryGoal: "Get more leads",
+    timeline: "1-3 months",
+    budgetRange: 2500,
+    competitors: "",
+    designStyle: "Professional & corporate",
+    socialMedia: "",
+    additionalNotes: "",
+  });
+  data.meetings.push({
+    id: id(),
+    clientId,
+    type: "Strategy Meeting",
+    title: "Review website refresh scope",
+    datetime: addDays(5) + "T13:00",
+    status: "Proposed",
+    proposedBy: "Agency",
+    notes: "Confirm final priority pages and launch timing.",
+  });
+  data.tasks.push({
+    id: id(),
+    clientId,
+    title: "Review proposal scope",
+    dueDate: addDays(2),
+    priority: "High",
+    done: false,
+  });
+  data.notes.push({
+    id: id(),
+    clientId,
+    body: "Prefers concise weekly summaries and fixed-price scopes.",
+    createdAt: new Date().toISOString(),
+  });
+  return data;
+};
+
+const app = document.querySelector("#app");
+
+window.addEventListener("load", render);
+window.addEventListener("mousemove", scheduleAutoLock);
+window.addEventListener("keydown", scheduleAutoLock);
+window.addEventListener("click", scheduleAutoLock);
+
+function id() {
+  return crypto.randomUUID();
+}
+
+function today() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function addDays(days) {
+  const date = new Date();
+  date.setDate(date.getDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function money(value) {
+  return Number(value || 0).toLocaleString(undefined, {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+  });
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function getClient(clientId) {
+  return state.data.clients.find((client) => client.id === clientId);
+}
+
+function hydrateData(data) {
+  const next = { ...blankData(), ...data };
+  next.clients ||= [];
+  next.contacts ||= [];
+  next.deals ||= [];
+  next.projects ||= [];
+  next.tasks ||= [];
+  next.onboarding ||= [];
+  next.questionnaires ||= [];
+  next.meetings ||= [];
+  next.notes ||= [];
+  next.audit ||= [];
+  return next;
+}
+
+function visibleClients() {
+  const query = state.query.trim().toLowerCase();
+  if (!query) return state.data.clients;
+  return state.data.clients.filter((client) => {
+    const contacts = state.data.contacts
+      .filter((contact) => contact.clientId === client.id)
+      .map((contact) => `${contact.name} ${contact.email}`)
+      .join(" ");
+    const projects = state.data.projects
+      .filter((project) => project.clientId === client.id)
+      .map((project) => `${project.name} ${project.status}`)
+      .join(" ");
+    return `${client.name} ${client.company} ${client.email} ${client.phone} ${client.segment} ${client.tags} ${contacts} ${projects}`
+      .toLowerCase()
+      .includes(query);
+  });
+}
+
+async function deriveKey(passphrase, salt) {
+  const material = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(passphrase),
+    "PBKDF2",
+    false,
+    ["deriveKey"],
+  );
+  return crypto.subtle.deriveKey(
+    {
+      name: "PBKDF2",
+      salt,
+      iterations: 310000,
+      hash: "SHA-256",
+    },
+    material,
+    { name: "AES-GCM", length: 256 },
+    false,
+    ["encrypt", "decrypt"],
+  );
+}
+
+function bytesToBase64(bytes) {
+  const array = new Uint8Array(bytes);
+  let binary = "";
+  for (let index = 0; index < array.length; index += 0x8000) {
+    binary += String.fromCharCode(...array.subarray(index, index + 0x8000));
+  }
+  return btoa(binary);
+}
+
+function base64ToBytes(value) {
+  return Uint8Array.from(atob(value), (char) => char.charCodeAt(0));
+}
+
+async function encryptData(data) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const encoded = new TextEncoder().encode(JSON.stringify(data));
+  const cipher = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, state.key, encoded);
+  return {
+    version: 1,
+    kdf: "PBKDF2-SHA256",
+    iterations: 310000,
+    salt: bytesToBase64(state.salt),
+    iv: bytesToBase64(iv),
+    cipher: bytesToBase64(cipher),
+    savedAt: new Date().toISOString(),
+  };
+}
+
+async function decryptData(key, payload) {
+  const plain = await crypto.subtle.decrypt(
+    { name: "AES-GCM", iv: base64ToBytes(payload.iv) },
+    key,
+    base64ToBytes(payload.cipher),
+  );
+  return JSON.parse(new TextDecoder().decode(plain));
+}
+
+async function saveData(action = "Saved") {
+  if (!state.unlocked) return;
+  state.data.updatedAt = new Date().toISOString();
+  state.data.audit.unshift({
+    id: id(),
+    action,
+    at: new Date().toISOString(),
+  });
+  state.data.audit = state.data.audit.slice(0, 100);
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(await encryptData(state.data)));
+}
+
+async function unlock(event) {
+  event.preventDefault();
+  const form = new FormData(event.currentTarget);
+  const passphrase = String(form.get("passphrase") || "");
+  const payloadRaw = localStorage.getItem(STORAGE_KEY);
+  try {
+    if (payloadRaw) {
+      const payload = JSON.parse(payloadRaw);
+      const salt = base64ToBytes(payload.salt);
+      const key = await deriveKey(passphrase, salt);
+      state.data = hydrateData(await decryptData(key, payload));
+      state.key = key;
+      state.salt = salt;
+    } else {
+      if (passphrase.length < 12) {
+        showToast("Use at least 12 characters for the vault passphrase.");
+        return;
+      }
+      state.salt = crypto.getRandomValues(new Uint8Array(16));
+      state.key = await deriveKey(passphrase, state.salt);
+      state.data = seedData();
+      state.unlocked = true;
+      await saveData("Created encrypted vault");
+    }
+    state.unlocked = true;
+    showToast("Vault unlocked.");
+    scheduleAutoLock();
+    render();
+  } catch {
+    showToast("Could not unlock vault. Check the passphrase.");
+  }
+}
+
+function lock() {
+  state.unlocked = false;
+  state.key = null;
+  state.data = null;
+  state.drawer = null;
+  clearTimeout(state.timer);
+  render();
+}
+
+function scheduleAutoLock() {
+  if (!state.unlocked) return;
+  clearTimeout(state.timer);
+  state.timer = setTimeout(() => {
+    showToast("Vault locked after inactivity.");
+    lock();
+  }, AUTO_LOCK_MS);
+}
+
+function showToast(message) {
+  state.toast = message;
+  render();
+  setTimeout(() => {
+    if (state.toast === message) {
+      state.toast = "";
+      render();
+    }
+  }, 3200);
+}
+
+function render() {
+  if (!state.unlocked) {
+    app.innerHTML = lockScreen();
+    app.querySelector("form").addEventListener("submit", unlock);
+    return;
+  }
+  app.innerHTML = shell();
+  bindShell();
+}
+
+function lockScreen() {
+  const exists = Boolean(localStorage.getItem(STORAGE_KEY));
+  return `
+    <section class="lock-screen">
+      <form class="lock-card">
+        <div class="brand-row">
+          <div class="brand-mark">CV</div>
+          <div>
+            <div class="eyebrow">Encrypted local CRM</div>
+            <h1>ClientVault CRM</h1>
+          </div>
+        </div>
+        <p class="muted">${exists ? "Unlock your client vault." : "Create your encrypted CRM vault on this device."}</p>
+        <div class="field">
+          <label for="passphrase">Vault passphrase</label>
+          <input id="passphrase" name="passphrase" type="password" autocomplete="current-password" minlength="12" required autofocus />
+        </div>
+        <button class="btn" type="submit">${exists ? "Unlock CRM" : "Create Secure Vault"}</button>
+        <p class="secure-note space-top">Data is encrypted in this browser with AES-GCM before it is saved. There is no password recovery, so keep the passphrase somewhere safe.</p>
+      </form>
+      ${toast()}
+    </section>
+  `;
+}
+
+function shell() {
+  return `
+    <section class="app-grid">
+      <aside class="sidebar">
+        <div class="brand-row">
+          <div class="brand-mark">CV</div>
+          <div>
+            <strong>ClientVault</strong>
+            <div class="muted">Private CRM</div>
+          </div>
+        </div>
+        <nav class="nav">
+          ${navButton("dashboard", "Dashboard")}
+          ${navButton("clients", "Clients")}
+          ${navButton("contacts", "Contacts")}
+          ${navButton("onboarding", "Onboarding")}
+          ${navButton("projects", "Projects")}
+          ${navButton("schedule", "Schedule")}
+          ${navButton("pipeline", "Pipeline")}
+          ${navButton("tasks", "Tasks")}
+          ${navButton("insights", "Insights")}
+          ${navButton("notes", "Notes")}
+          ${navButton("settings", "Settings")}
+        </nav>
+        <div class="sidebar-footer">
+          <button class="btn secondary" data-action="export">Export Backup</button>
+          <button class="btn secondary" data-action="lock">Lock</button>
+        </div>
+      </aside>
+      <main class="main">
+        <div class="topbar">
+          <input class="search" data-action="search" placeholder="Search clients, contacts, tags, email, phone..." value="${escapeHtml(state.query)}" />
+          <div class="top-actions">
+          <button class="btn" data-open="client">New Client</button>
+          <button class="btn secondary" data-open="project">New Project</button>
+          <button class="btn secondary" data-open="task">New Task</button>
+        </div>
+        </div>
+        ${view()}
+      </main>
+      ${state.drawer ? drawer() : ""}
+      ${toast()}
+    </section>
+  `;
+}
+
+function navButton(view, label) {
+  return `<button class="${state.view === view ? "active" : ""}" data-view="${view}">${label}</button>`;
+}
+
+function bindShell() {
+  app.querySelectorAll("[data-view]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.view = button.dataset.view;
+      render();
+    });
+  });
+  app.querySelectorAll("[data-open]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.drawer = { type: button.dataset.open, clientId: button.dataset.client || "" };
+      render();
+    });
+  });
+  app.querySelectorAll("[data-edit]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.drawer = { type: button.dataset.edit, id: button.dataset.id, clientId: button.dataset.client || "" };
+      render();
+    });
+  });
+  app.querySelectorAll("[data-delete]").forEach((button) => {
+    button.addEventListener("click", () => deleteRecord(button.dataset.delete, button.dataset.id));
+  });
+  app.querySelectorAll("[data-stage]").forEach((button) => {
+    button.addEventListener("click", () => moveDeal(button.dataset.id, button.dataset.stage));
+  });
+  app.querySelectorAll("[data-done]").forEach((button) => {
+    button.addEventListener("click", () => toggleTask(button.dataset.id));
+  });
+  app.querySelectorAll("[data-onboarding]").forEach((checkbox) => {
+    checkbox.addEventListener("change", () => toggleOnboardingStep(checkbox.dataset.onboarding, checkbox.dataset.step, checkbox.checked));
+  });
+  app.querySelectorAll("[data-confirm-meeting]").forEach((button) => {
+    button.addEventListener("click", () => confirmMeeting(button.dataset.confirmMeeting));
+  });
+  app.querySelectorAll("[data-close]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.drawer = null;
+      render();
+    });
+  });
+  app.querySelectorAll("form[data-form]").forEach((form) => {
+    form.addEventListener("submit", submitForm);
+  });
+  const search = app.querySelector("[data-action='search']");
+  if (search) {
+    search.addEventListener("input", (event) => {
+      const cursor = event.target.selectionStart;
+      state.query = event.target.value;
+      render();
+      const nextSearch = app.querySelector("[data-action='search']");
+      nextSearch.focus();
+      nextSearch.setSelectionRange(cursor, cursor);
+    });
+  }
+  const lockButton = app.querySelector("[data-action='lock']");
+  if (lockButton) lockButton.addEventListener("click", lock);
+  const exportButton = app.querySelector("[data-action='export']");
+  if (exportButton) exportButton.addEventListener("click", exportBackup);
+  const importInput = app.querySelector("[data-action='import']");
+  if (importInput) importInput.addEventListener("change", importBackup);
+}
+
+function view() {
+  if (state.view === "clients") return clientsView();
+  if (state.view === "contacts") return contactsView();
+  if (state.view === "onboarding") return onboardingView();
+  if (state.view === "projects") return projectsView();
+  if (state.view === "schedule") return scheduleView();
+  if (state.view === "pipeline") return pipelineView();
+  if (state.view === "tasks") return tasksView();
+  if (state.view === "insights") return insightsView();
+  if (state.view === "notes") return notesView();
+  if (state.view === "settings") return settingsView();
+  return dashboardView();
+}
+
+function dashboardView() {
+  const clients = state.data.clients;
+  const openDeals = state.data.deals.filter((deal) => deal.stage !== "Won");
+  const totalPipeline = openDeals.reduce((sum, deal) => sum + Number(deal.value || 0), 0);
+  const overdue = state.data.tasks.filter((task) => !task.done && task.dueDate < today()).length;
+  const activeProjects = state.data.projects.filter((project) => !["Delivered", "Approved"].includes(project.status)).length;
+  return `
+    <div class="section-head">
+      <div>
+        <h1>Dashboard</h1>
+        <p class="muted">Today’s client work, project delivery, pipeline value, and relationship health.</p>
+      </div>
+      <div class="section-actions">
+        <button class="btn secondary" data-open="meeting">Schedule Meeting</button>
+        <button class="btn secondary" data-open="project">New Project</button>
+        <button class="btn secondary" data-open="deal">New Deal</button>
+        <button class="btn secondary" data-open="note">New Note</button>
+      </div>
+    </div>
+    <div class="stats-grid">
+      ${stat("Clients", clients.length)}
+      ${stat("Open pipeline", money(totalPipeline))}
+      ${stat("Active projects", activeProjects)}
+      ${stat("Open tasks", state.data.tasks.filter((task) => !task.done).length)}
+      ${stat("Overdue", overdue)}
+    </div>
+    <div class="layout-two">
+      <section class="panel">
+        <div class="panel-head"><h2>Priority Clients</h2><button class="btn secondary" data-open="client">Add</button></div>
+        <div class="list">${clientRows(clients.slice(0, 8))}</div>
+      </section>
+      <section class="panel">
+        <div class="panel-head"><h2>Due Next</h2><button class="btn secondary" data-open="task">Add</button></div>
+        <div class="panel-body">${taskCards(dueTasks().slice(0, 6))}</div>
+      </section>
+      <section class="panel span-2">
+        <div class="panel-head"><h2>Upcoming Events</h2><button class="btn secondary" data-open="meeting">Schedule</button></div>
+        <div class="panel-body">${eventCards(upcomingEvents().slice(0, 8))}</div>
+      </section>
+    </div>
+  `;
+}
+
+function stat(label, value) {
+  return `<div class="stat"><span class="muted">${label}</span><strong>${escapeHtml(value)}</strong></div>`;
+}
+
+function clientsView() {
+  const clients = visibleClients();
+  return `
+    <div class="section-head">
+      <div>
+        <h1>Clients</h1>
+        <p class="muted">${clients.length} matching client${clients.length === 1 ? "" : "s"}.</p>
+      </div>
+      <div class="section-actions">
+        <button class="btn" data-open="client">New Client</button>
+        <button class="btn secondary" data-open="contact">New Contact</button>
+      </div>
+    </div>
+    <section class="panel"><div class="list">${clientRows(clients)}</div></section>
+  `;
+}
+
+function clientRows(clients) {
+  if (!clients.length) return `<div class="empty">No clients yet.</div>`;
+  return clients
+    .map((client) => {
+      const contacts = state.data.contacts.filter((contact) => contact.clientId === client.id);
+      return `
+        <article class="row">
+          <div>
+            <div class="row-title">${escapeHtml(client.name)}</div>
+            <div class="row-sub">${escapeHtml(client.company || client.email || "No company")}</div>
+          </div>
+          <div><span class="pill ${client.status === "Active" ? "active" : ""}">${escapeHtml(client.status)}</span></div>
+          <div>
+            <div class="row-sub">Health · Value</div>
+            <strong>${clientHealthScore(client)} · ${money(client.value)}</strong>
+          </div>
+          <div>
+            <div class="row-sub">Last touch</div>
+            <strong>${escapeHtml(client.lastTouch || "none")}</strong>
+          </div>
+          <div class="inline-actions">
+            <button class="btn secondary" data-edit="client" data-id="${client.id}">Edit</button>
+            <button class="btn secondary" data-open="contact" data-client="${client.id}">Contact</button>
+            <button class="btn secondary" data-open="deal" data-client="${client.id}">Deal</button>
+            <button class="btn secondary" data-open="project" data-client="${client.id}">Project</button>
+          </div>
+          <div class="span-2 row-sub">${contacts.map((contact) => escapeHtml(`${contact.name} <${contact.email}>`)).join(" · ")}</div>
+        </article>
+      `;
+    })
+    .join("");
+}
+
+function contactsView() {
+  const clients = visibleClients();
+  const clientIds = new Set(clients.map((client) => client.id));
+  const contacts = state.data.contacts
+    .filter((contact) => clientIds.has(contact.clientId))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  return `
+    <div class="section-head">
+      <div>
+        <h1>Contacts</h1>
+        <p class="muted">${contacts.length} matching contact${contacts.length === 1 ? "" : "s"}.</p>
+      </div>
+      <button class="btn" data-open="contact">New Contact</button>
+    </div>
+    <section class="panel"><div class="list">${contactRows(contacts)}</div></section>
+  `;
+}
+
+function contactRows(contacts) {
+  if (!contacts.length) return `<div class="empty">No contacts yet.</div>`;
+  return contacts
+    .map((contact) => {
+      const client = getClient(contact.clientId);
+      return `
+        <article class="row contact-row">
+          <div>
+            <div class="row-title">${escapeHtml(contact.name)}</div>
+            <div class="row-sub">${escapeHtml(contact.role || "No role")}</div>
+          </div>
+          <div>
+            <div class="row-sub">Client</div>
+            <strong>${escapeHtml(client?.name || "Unassigned")}</strong>
+          </div>
+          <div>
+            <div class="row-sub">${escapeHtml(contact.email || "No email")}</div>
+            <div class="row-sub">${escapeHtml(contact.phone || "No phone")}</div>
+          </div>
+          <div class="inline-actions">
+            <button class="btn secondary" data-edit="contact" data-id="${contact.id}">Edit</button>
+            <button class="btn secondary" data-delete="contact" data-id="${contact.id}">Delete</button>
+          </div>
+        </article>
+      `;
+    })
+    .join("");
+}
+
+function insightsView() {
+  const totalValue = state.data.clients.reduce((sum, client) => sum + Number(client.value || 0), 0);
+  const weightedPipeline = state.data.deals
+    .filter((deal) => deal.stage !== "Won")
+    .reduce((sum, deal) => sum + Number(deal.value || 0) * (Number(deal.probability || 0) / 100), 0);
+  const avgHealth = state.data.clients.length
+    ? Math.round(state.data.clients.reduce((sum, client) => sum + clientHealthScore(client), 0) / state.data.clients.length)
+    : 0;
+  return `
+    <div class="section-head">
+      <div>
+        <h1>Insights</h1>
+        <p class="muted">Account health, forecast, delivery risk, and next-best actions.</p>
+      </div>
+    </div>
+    <div class="stats-grid">
+      ${stat("Client value", money(totalValue))}
+      ${stat("Weighted forecast", money(weightedPipeline))}
+      ${stat("Average health", `${avgHealth}/100`)}
+      ${stat("Projects at risk", state.data.projects.filter((project) => project.dueDate && project.dueDate < today() && project.status !== "Delivered").length)}
+      ${stat("Unconfirmed meetings", state.data.meetings.filter((meeting) => meeting.status === "Proposed").length)}
+    </div>
+    <div class="layout-two">
+      <section class="panel">
+        <div class="panel-head"><h2>Account Health</h2></div>
+        <div class="panel-body">${healthRows()}</div>
+      </section>
+      <section class="panel">
+        <div class="panel-head"><h2>Automation Cues</h2></div>
+        <div class="panel-body">${automationCards()}</div>
+      </section>
+    </div>
+  `;
+}
+
+function healthRows() {
+  if (!state.data.clients.length) return `<div class="empty">No clients yet.</div>`;
+  return [...state.data.clients]
+    .sort((a, b) => clientHealthScore(a) - clientHealthScore(b))
+    .map((client) => {
+      const score = clientHealthScore(client);
+      return `
+        <article class="event-row">
+          <div>
+            <strong>${escapeHtml(client.name)}</strong>
+            <div class="row-sub">${escapeHtml(client.nextStep || "No next step")} · Last touch ${escapeHtml(client.lastTouch || "none")}</div>
+          </div>
+          <span class="pill ${score < 50 ? "risk" : score >= 80 ? "active" : ""}">${score}/100</span>
+        </article>
+      `;
+    })
+    .join("");
+}
+
+function automationCards() {
+  const cues = [];
+  state.data.clients.forEach((client) => {
+    if (client.status === "Lead" && !state.data.deals.some((deal) => deal.clientId === client.id)) {
+      cues.push({ title: "Create first opportunity", client, detail: "Lead has no pipeline deal." });
+    }
+    if (daysSince(client.lastTouch) > 14 && client.status !== "Former") {
+      cues.push({ title: "Follow up", client, detail: `${daysSince(client.lastTouch)} days since last touch.` });
+    }
+    if (!getOnboarding(client.id) && client.status === "Active") {
+      cues.push({ title: "Start onboarding", client, detail: "Active client has no onboarding checklist." });
+    }
+  });
+  state.data.projects
+    .filter((project) => project.dueDate && project.dueDate < today() && project.status !== "Delivered")
+    .forEach((project) => cues.push({ title: "Project overdue", client: getClient(project.clientId), detail: project.name }));
+  state.data.meetings
+    .filter((meeting) => meeting.status === "Proposed")
+    .forEach((meeting) => cues.push({ title: "Confirm meeting", client: getClient(meeting.clientId), detail: `${meeting.title || meeting.type} · ${formatDateTime(meeting.datetime)}` }));
+  if (!cues.length) return `<div class="empty">No automation cues right now.</div>`;
+  return cues.slice(0, 12).map((cue) => `
+    <article class="task-card">
+      <strong>${escapeHtml(cue.title)}</strong>
+      <span class="row-sub">${escapeHtml(cue.client?.name || "No client")} · ${escapeHtml(cue.detail)}</span>
+    </article>
+  `).join("");
+}
+
+function clientHealthScore(client) {
+  let score = 70;
+  if (client.status === "Active") score += 10;
+  if (client.status === "At Risk") score -= 25;
+  if (client.status === "Former") score -= 40;
+  const days = daysSince(client.lastTouch);
+  if (days > 30) score -= 25;
+  else if (days > 14) score -= 12;
+  if (state.data.tasks.some((task) => task.clientId === client.id && !task.done && task.dueDate < today())) score -= 15;
+  if (state.data.projects.some((project) => project.clientId === client.id && project.status === "In Progress")) score += 8;
+  if (state.data.meetings.some((meeting) => meeting.clientId === client.id && meeting.status === "Confirmed")) score += 5;
+  return Math.max(0, Math.min(100, score));
+}
+
+function daysSince(dateValue) {
+  if (!dateValue) return 999;
+  const date = new Date(dateValue);
+  if (Number.isNaN(date.getTime())) return 999;
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  date.setHours(0, 0, 0, 0);
+  return Math.floor((now - date) / (1000 * 60 * 60 * 24));
+}
+
+function onboardingView() {
+  const clients = visibleClients();
+  return `
+    <div class="section-head">
+      <div>
+        <h1>Onboarding</h1>
+        <p class="muted">Track kickoff readiness, questionnaires, and planning meetings.</p>
+      </div>
+      <button class="btn" data-open="onboarding">New Checklist</button>
+    </div>
+    <div class="onboarding-grid">
+      ${clients.length ? clients.map(onboardingCard).join("") : `<section class="panel"><div class="empty">No active clients yet.</div></section>`}
+    </div>
+  `;
+}
+
+function onboardingCard(client) {
+  const checklist = getOnboarding(client.id);
+  const questionnaire = state.data.questionnaires.find((item) => item.clientId === client.id);
+  const completeCount = ONBOARDING_STEPS.filter(([key]) => Boolean(checklist?.[key])).length;
+  const percent = Math.round((completeCount / ONBOARDING_STEPS.length) * 100);
+  return `
+    <section class="panel onboarding-card">
+      <div class="panel-head">
+        <div>
+          <h2>${escapeHtml(client.name)}</h2>
+          <p class="row-sub">${completeCount}/${ONBOARDING_STEPS.length} steps complete</p>
+        </div>
+        <span class="pill ${percent >= 80 ? "active" : percent < 40 ? "risk" : ""}">${percent}%</span>
+      </div>
+      <div class="panel-body">
+        <div class="progress"><span style="width:${percent}%"></span></div>
+        <div class="checklist">
+          ${ONBOARDING_STEPS.map(([key, label]) => `
+            <label class="check-row">
+              <input type="checkbox" data-onboarding="${client.id}" data-step="${key}" ${checklist?.[key] ? "checked" : ""} />
+              <span>${escapeHtml(label)}</span>
+            </label>
+          `).join("")}
+        </div>
+        ${checklist?.strategyMeetingDate ? `<p class="secure-note">Strategy meeting: ${formatDateTime(checklist.strategyMeetingDate)}${checklist.strategyMeetingConfirmed ? " confirmed" : " proposed"}</p>` : ""}
+        ${questionnaire ? `<p class="row-sub">Questionnaire: ${escapeHtml(questionnaire.primaryGoal || "Goal not set")} · ${escapeHtml(questionnaire.timeline || "Timeline not set")}</p>` : `<p class="row-sub">No questionnaire captured yet.</p>`}
+        <div class="inline-actions">
+          <button class="btn secondary" data-open="meeting" data-client="${client.id}">Meeting</button>
+          <button class="btn secondary" data-open="questionnaire" data-client="${client.id}">Questionnaire</button>
+          <button class="btn secondary" data-edit="onboarding" data-id="${checklist?.id || ""}" data-client="${client.id}">${checklist ? "Edit" : "Create"}</button>
+        </div>
+      </div>
+    </section>
+  `;
+}
+
+function projectsView() {
+  const query = state.query.trim().toLowerCase();
+  const projects = state.data.projects
+    .filter((project) => {
+      const client = getClient(project.clientId);
+      return !query || `${project.name} ${project.description} ${project.status} ${client?.name}`.toLowerCase().includes(query);
+    })
+    .sort((a, b) => (a.dueDate || "9999-12-31").localeCompare(b.dueDate || "9999-12-31"));
+  const counts = PROJECT_STATUSES.map((status) => [status, state.data.projects.filter((project) => project.status === status).length]);
+  return `
+    <div class="section-head">
+      <div>
+        <h1>Projects</h1>
+        <p class="muted">Track delivery scope, roadmap, status, due dates, and feedback.</p>
+      </div>
+      <button class="btn" data-open="project">New Project</button>
+    </div>
+    <div class="status-strip">${counts.map(([label, count]) => stat(label, count)).join("")}</div>
+    <section class="panel"><div class="panel-body project-list">${projectCards(projects)}</div></section>
+  `;
+}
+
+function projectCards(projects) {
+  if (!projects.length) return `<div class="empty">No projects yet.</div>`;
+  return projects
+    .map((project) => {
+      const client = getClient(project.clientId);
+      return `
+        <article class="project-card">
+          <div>
+            <div class="row-title">${escapeHtml(project.name)}</div>
+            <div class="row-sub">${escapeHtml(client?.name || "Unassigned")} · Due ${escapeHtml(project.dueDate || "unscheduled")}</div>
+          </div>
+          <span class="pill ${project.status === "Delivered" ? "active" : project.status === "Review" ? "hot" : ""}">${escapeHtml(project.status || "Not Started")}</span>
+          ${project.description ? `<p>${escapeHtml(project.description)}</p>` : ""}
+          ${project.scope ? `<p class="row-sub">${escapeHtml(project.scope)}</p>` : ""}
+          ${project.roadmap ? `<pre class="roadmap">${escapeHtml(project.roadmap)}</pre>` : ""}
+          ${project.feedback ? `<p class="secure-note">Feedback: ${escapeHtml(project.feedback)}</p>` : ""}
+          <div class="inline-actions">
+            ${project.deliverableUrl ? `<a class="btn secondary" href="${escapeHtml(project.deliverableUrl)}" target="_blank" rel="noreferrer">Deliverable</a>` : ""}
+            <button class="btn secondary" data-edit="project" data-id="${project.id}">Edit</button>
+            <button class="btn secondary" data-delete="project" data-id="${project.id}">Delete</button>
+          </div>
+        </article>
+      `;
+    })
+    .join("");
+}
+
+function scheduleView() {
+  const meetings = [...state.data.meetings].sort((a, b) => (a.datetime || "").localeCompare(b.datetime || ""));
+  return `
+    <div class="section-head">
+      <div>
+        <h1>Schedule</h1>
+        <p class="muted">Propose, confirm, and track client meetings.</p>
+      </div>
+      <button class="btn" data-open="meeting">Schedule Meeting</button>
+    </div>
+    <div class="layout-two">
+      <section class="panel">
+        <div class="panel-head"><h2>Meetings</h2></div>
+        <div class="panel-body">${meetingCards(meetings)}</div>
+      </section>
+      <section class="panel">
+        <div class="panel-head"><h2>Upcoming Events</h2></div>
+        <div class="panel-body">${eventCards(upcomingEvents())}</div>
+      </section>
+    </div>
+  `;
+}
+
+function meetingCards(meetings) {
+  if (!meetings.length) return `<div class="empty">No meetings scheduled.</div>`;
+  return meetings
+    .map((meeting) => {
+      const client = getClient(meeting.clientId);
+      return `
+        <article class="task-card">
+          <strong>${escapeHtml(meeting.title || meeting.type)}</strong>
+          <span class="row-sub">${escapeHtml(client?.name || "No client")} · ${formatDateTime(meeting.datetime)}</span>
+          <span class="pill ${meeting.status === "Confirmed" ? "active" : meeting.status === "Canceled" ? "risk" : ""}">${escapeHtml(meeting.status || "Proposed")}</span>
+          ${meeting.notes ? `<p class="row-sub">${escapeHtml(meeting.notes)}</p>` : ""}
+          <div class="inline-actions">
+            ${meeting.status !== "Confirmed" ? `<button class="btn secondary" data-confirm-meeting="${meeting.id}">Confirm</button>` : ""}
+            <button class="btn secondary" data-edit="meeting" data-id="${meeting.id}">Edit</button>
+            <button class="btn secondary" data-delete="meeting" data-id="${meeting.id}">Delete</button>
+          </div>
+        </article>
+      `;
+    })
+    .join("");
+}
+
+function upcomingEvents() {
+  const meetingEvents = state.data.meetings
+    .filter((meeting) => meeting.datetime && meeting.status !== "Canceled")
+    .map((meeting) => ({
+      type: "Meeting",
+      title: meeting.title || meeting.type,
+      date: meeting.datetime,
+      clientName: getClient(meeting.clientId)?.name || "",
+      notes: meeting.status || "",
+    }));
+  const projectEvents = state.data.projects
+    .filter((project) => project.dueDate && project.status !== "Delivered")
+    .map((project) => ({
+      type: "Project Due",
+      title: project.name,
+      date: project.dueDate,
+      clientName: getClient(project.clientId)?.name || "",
+      notes: project.status || "",
+    }));
+  return [...meetingEvents, ...projectEvents].sort((a, b) => new Date(a.date) - new Date(b.date));
+}
+
+function eventCards(events) {
+  if (!events.length) return `<div class="empty">No upcoming events.</div>`;
+  return events
+    .map((event) => `
+      <article class="event-row">
+        <div>
+          <strong>${escapeHtml(event.title)}</strong>
+          <div class="row-sub">${escapeHtml(event.clientName || "No client")} · ${escapeHtml(event.type)}${event.notes ? ` · ${escapeHtml(event.notes)}` : ""}</div>
+        </div>
+        <span class="pill">${formatDateTime(event.date)}</span>
+      </article>
+    `)
+    .join("");
+}
+
+function getOnboarding(clientId) {
+  return state.data.onboarding.find((item) => item.clientId === clientId);
+}
+
+function formatDateTime(value) {
+  if (!value) return "unscheduled";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  const hasTime = value.includes("T");
+  return hasTime
+    ? date.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })
+    : date.toLocaleDateString(undefined, { dateStyle: "medium" });
+}
+
+function pipelineView() {
+  return `
+    <div class="section-head">
+      <div>
+        <h1>Pipeline</h1>
+        <p class="muted">Move opportunities forward and keep close dates visible.</p>
+      </div>
+      <button class="btn" data-open="deal">New Deal</button>
+    </div>
+    <div class="kanban">
+      ${STAGES.map(stageColumn).join("")}
+    </div>
+  `;
+}
+
+function stageColumn(stage) {
+  const deals = state.data.deals.filter((deal) => deal.stage === stage);
+  const total = deals.reduce((sum, deal) => sum + Number(deal.value || 0), 0);
+  return `
+    <section class="stage">
+      <h3>${stage}<span class="money">${money(total)}</span></h3>
+      ${deals.length ? deals.map(dealCard).join("") : `<div class="empty">No deals</div>`}
+    </section>
+  `;
+}
+
+function dealCard(deal) {
+  const client = getClient(deal.clientId);
+  const currentIndex = STAGES.indexOf(deal.stage);
+  const prev = STAGES[currentIndex - 1];
+  const next = STAGES[currentIndex + 1];
+  return `
+    <article class="deal-card">
+      <strong>${escapeHtml(deal.name)}</strong>
+      <span class="row-sub">${escapeHtml(client?.name || "Unassigned")}</span>
+      <span class="money">${money(deal.value)} · ${Number(deal.probability || 0)}%</span>
+      <span class="row-sub">Close ${escapeHtml(deal.closeDate || "unscheduled")}</span>
+      <div class="inline-actions">
+        ${prev ? `<button class="btn secondary" data-stage="${prev}" data-id="${deal.id}">Back</button>` : ""}
+        ${next ? `<button class="btn secondary" data-stage="${next}" data-id="${deal.id}">Next</button>` : ""}
+        <button class="btn secondary" data-edit="deal" data-id="${deal.id}">Edit</button>
+      </div>
+    </article>
+  `;
+}
+
+function tasksView() {
+  const open = dueTasks();
+  const done = state.data.tasks
+    .filter((task) => task.done)
+    .sort((a, b) => (b.dueDate || "").localeCompare(a.dueDate || ""));
+  return `
+    <div class="section-head">
+      <div>
+        <h1>Tasks</h1>
+        <p class="muted">A practical follow-up queue tied to clients.</p>
+      </div>
+      <button class="btn" data-open="task">New Task</button>
+    </div>
+    <div class="task-grid">
+      <section class="panel"><div class="panel-head"><h2>Open</h2></div><div class="panel-body">${taskCards(open)}</div></section>
+      <section class="panel"><div class="panel-head"><h2>Completed</h2></div><div class="panel-body">${taskCards(done)}</div></section>
+      <section class="panel"><div class="panel-head"><h2>Activity</h2></div><div class="panel-body">${auditCards()}</div></section>
+    </div>
+  `;
+}
+
+function dueTasks() {
+  return state.data.tasks
+    .filter((task) => !task.done)
+    .sort((a, b) => (a.dueDate || "9999-12-31").localeCompare(b.dueDate || "9999-12-31"));
+}
+
+function taskCards(tasks) {
+  if (!tasks.length) return `<div class="empty">Nothing here.</div>`;
+  return tasks
+    .map((task) => {
+      const client = getClient(task.clientId);
+      const risk = !task.done && task.dueDate < today();
+      return `
+        <article class="task-card">
+          <strong>${escapeHtml(task.title)}</strong>
+          <span class="row-sub">${escapeHtml(client?.name || "No client")} · Due ${escapeHtml(task.dueDate || "none")}</span>
+          <span class="pill ${risk ? "risk" : task.priority === "High" ? "hot" : ""}">${escapeHtml(task.priority || "Normal")}</span>
+          <div class="inline-actions">
+            <button class="btn secondary" data-done="${task.id}">${task.done ? "Reopen" : "Done"}</button>
+            <button class="btn secondary" data-edit="task" data-id="${task.id}">Edit</button>
+          </div>
+        </article>
+      `;
+    })
+    .join("");
+}
+
+function notesView() {
+  return `
+    <div class="section-head">
+      <div>
+        <h1>Notes</h1>
+        <p class="muted">Chronological relationship notes and decisions.</p>
+      </div>
+      <button class="btn" data-open="note">New Note</button>
+    </div>
+    <section class="panel"><div class="panel-body">${noteCards()}</div></section>
+  `;
+}
+
+function noteCards() {
+  const notes = [...state.data.notes].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  if (!notes.length) return `<div class="empty">No notes yet.</div>`;
+  return notes
+    .map((note) => {
+      const client = getClient(note.clientId);
+      return `
+        <article class="note-card">
+          <strong>${escapeHtml(client?.name || "No client")}</strong>
+          <p>${escapeHtml(note.body)}</p>
+          <span class="row-sub">${new Date(note.createdAt).toLocaleString()}</span>
+          <div class="inline-actions">
+            <button class="btn secondary" data-edit="note" data-id="${note.id}">Edit</button>
+            <button class="btn secondary" data-delete="note" data-id="${note.id}">Delete</button>
+          </div>
+        </article>
+      `;
+    })
+    .join("");
+}
+
+function settingsView() {
+  const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
+  return `
+    <div class="section-head">
+      <div>
+        <h1>Settings</h1>
+        <p class="muted">Backup, restore, and vault metadata.</p>
+      </div>
+    </div>
+    <section class="panel">
+      <div class="panel-body">
+        <p class="secure-note">Backups are encrypted with the same vault passphrase. Importing replaces the current vault on this device.</p>
+        <div class="section-actions settings-actions">
+          <button class="btn" data-action="export">Export Encrypted Backup</button>
+          <label class="btn secondary">Import Backup<input data-action="import" type="file" accept="application/json" hidden /></label>
+        </div>
+        <p><strong>Records:</strong> ${state.data.clients.length} clients, ${state.data.contacts.length} contacts, ${state.data.deals.length} deals, ${state.data.tasks.length} tasks, ${state.data.notes.length} notes.</p>
+        <p><strong>Last saved:</strong> ${escapeHtml(saved.savedAt || "Unknown")}</p>
+        <p><strong>Auto-lock:</strong> 15 minutes of inactivity.</p>
+      </div>
+    </section>
+  `;
+}
+
+function auditCards() {
+  if (!state.data.audit.length) return `<div class="empty">No activity yet.</div>`;
+  return state.data.audit
+    .slice(0, 10)
+    .map((item) => `<p><strong>${escapeHtml(item.action)}</strong><br><span class="row-sub">${new Date(item.at).toLocaleString()}</span></p>`)
+    .join("");
+}
+
+function drawer() {
+  const title = drawerTitle();
+  return `
+    <div class="drawer" role="dialog" aria-modal="true">
+      <aside class="drawer-panel">
+        <div class="drawer-head">
+          <h2>${title}</h2>
+          <button class="btn secondary icon" data-close title="Close">X</button>
+        </div>
+        <div class="drawer-body">
+          ${drawerForm()}
+          ${state.drawer.id ? `<button class="btn danger space-top" data-delete="${state.drawer.type}" data-id="${state.drawer.id}">Delete ${escapeHtml(state.drawer.type)}</button>` : ""}
+        </div>
+      </aside>
+    </div>
+  `;
+}
+
+function drawerTitle() {
+  const isEdit = Boolean(state.drawer.id);
+  const labels = {
+    client: "Client",
+    contact: "Contact",
+    onboarding: "Onboarding Checklist",
+    questionnaire: "Questionnaire",
+    project: "Project",
+    meeting: "Meeting",
+    deal: "Deal",
+    task: "Task",
+    note: "Note",
+  };
+  return `${isEdit ? "Edit" : "New"} ${labels[state.drawer.type]}`;
+}
+
+function drawerForm() {
+  const type = state.drawer.type;
+  if (type === "client") return clientForm();
+  if (type === "contact") return contactForm();
+  if (type === "onboarding") return onboardingForm();
+  if (type === "questionnaire") return questionnaireForm();
+  if (type === "project") return projectForm();
+  if (type === "meeting") return meetingForm();
+  if (type === "deal") return dealForm();
+  if (type === "task") return taskForm();
+  return noteForm();
+}
+
+function record(collection) {
+  return state.drawer.id ? state.data[collection].find((item) => item.id === state.drawer.id) : {};
+}
+
+function clientForm() {
+  const client = record("clients");
+  return `
+    <form data-form="client" class="form-grid">
+      ${input("name", "Client name", client.name, true)}
+      ${input("company", "Company", client.company)}
+      ${input("email", "Email", client.email, false, "email")}
+      ${input("phone", "Phone", client.phone)}
+      ${input("website", "Website", client.website, false, "url")}
+      ${input("segment", "Segment", client.segment)}
+      ${select("status", "Status", ["Lead", "Active", "At Risk", "Former"], client.status || "Lead")}
+      ${input("value", "Annual value", client.value || 0, false, "number")}
+      ${input("owner", "Owner", client.owner)}
+      ${input("lastTouch", "Last touch", client.lastTouch || today(), false, "date")}
+      ${input("tags", "Tags", client.tags, false, "text", "span-2")}
+      ${textarea("nextStep", "Next step", client.nextStep, "span-2")}
+      <button class="btn span-2" type="submit">Save Client</button>
+    </form>
+  `;
+}
+
+function contactForm() {
+  const contact = { clientId: state.drawer.clientId, ...record("contacts") };
+  return `
+    <form data-form="contact" class="form-grid">
+      ${select("clientId", "Client", state.data.clients.map((c) => [c.id, c.name]), contact.clientId)}
+      ${input("name", "Name", contact.name, true)}
+      ${input("role", "Role", contact.role)}
+      ${input("email", "Email", contact.email, false, "email")}
+      ${input("phone", "Phone", contact.phone)}
+      <button class="btn span-2" type="submit">Save Contact</button>
+    </form>
+  `;
+}
+
+function onboardingForm() {
+  const existing = state.drawer.id ? record("onboarding") : getOnboarding(state.drawer.clientId) || {};
+  const checklist = { clientId: state.drawer.clientId, ...existing };
+  return `
+    <form data-form="onboarding" class="form-grid">
+      ${select("clientId", "Client", state.data.clients.map((c) => [c.id, c.name]), checklist.clientId)}
+      ${input("welcomeCallDate", "Welcome call", checklist.welcomeCallDate || "", false, "datetime-local")}
+      ${select("welcomeCallConfirmed", "Welcome call confirmed", [["false", "No"], ["true", "Yes"]], String(Boolean(checklist.welcomeCallConfirmed)))}
+      ${input("strategyMeetingDate", "Strategy meeting", checklist.strategyMeetingDate || "", false, "datetime-local")}
+      ${select("strategyMeetingConfirmed", "Strategy meeting confirmed", [["false", "No"], ["true", "Yes"]], String(Boolean(checklist.strategyMeetingConfirmed)))}
+      ${textarea("notes", "Internal onboarding notes", checklist.notes, "span-2")}
+      <div class="span-2 form-checks">
+        ${ONBOARDING_STEPS.map(([key, label]) => `
+          <label class="check-row">
+            <input type="checkbox" name="${key}" value="true" ${checklist[key] ? "checked" : ""} />
+            <span>${escapeHtml(label)}</span>
+          </label>
+        `).join("")}
+      </div>
+      <button class="btn span-2" type="submit">Save Checklist</button>
+    </form>
+  `;
+}
+
+function questionnaireForm() {
+  const existing = state.drawer.id
+    ? record("questionnaires")
+    : state.data.questionnaires.find((item) => item.clientId === state.drawer.clientId) || {};
+  const questionnaire = { clientId: state.drawer.clientId, ...existing };
+  return `
+    <form data-form="questionnaire" class="form-grid">
+      ${select("clientId", "Client", state.data.clients.map((c) => [c.id, c.name]), questionnaire.clientId)}
+      ${input("websiteUrl", "Current website", questionnaire.websiteUrl, false, "url")}
+      ${select("primaryGoal", "Primary goal", ["Get more leads", "Increase online sales", "Build brand awareness", "Improve online reputation", "Other"], questionnaire.primaryGoal || "Get more leads")}
+      ${select("timeline", "Timeline", ["ASAP", "Within 1 month", "1-3 months", "3-6 months", "Flexible"], questionnaire.timeline || "Flexible")}
+      ${input("budgetRange", "Budget", questionnaire.budgetRange || 0, false, "number")}
+      ${select("designStyle", "Design style", ["Modern & minimal", "Bold & colorful", "Professional & corporate", "Warm & friendly", "Other"], questionnaire.designStyle || "Modern & minimal")}
+      ${textarea("targetAudience", "Target audience", questionnaire.targetAudience, "span-2")}
+      ${textarea("mainServices", "Products or services", questionnaire.mainServices, "span-2")}
+      ${textarea("uniqueValue", "Unique value", questionnaire.uniqueValue, "span-2")}
+      ${textarea("competitors", "Competitors", questionnaire.competitors, "span-2")}
+      ${textarea("socialMedia", "Social media handles", questionnaire.socialMedia, "span-2")}
+      ${textarea("additionalNotes", "Additional notes", questionnaire.additionalNotes, "span-2")}
+      <button class="btn span-2" type="submit">Save Questionnaire</button>
+    </form>
+  `;
+}
+
+function projectForm() {
+  const project = { clientId: state.drawer.clientId, ...record("projects") };
+  return `
+    <form data-form="project" class="form-grid">
+      ${select("clientId", "Client", state.data.clients.map((c) => [c.id, c.name]), project.clientId)}
+      ${input("name", "Project name", project.name, true)}
+      ${select("status", "Status", PROJECT_STATUSES, project.status || "Not Started")}
+      ${input("dueDate", "Due date", project.dueDate || "", false, "date")}
+      ${input("deliverableUrl", "Deliverable URL", project.deliverableUrl, false, "url", "span-2")}
+      ${textarea("description", "Description", project.description, "span-2")}
+      ${textarea("scope", "Scope and deliverables", project.scope, "span-2")}
+      ${textarea("roadmap", "Roadmap milestones", project.roadmap, "span-2")}
+      ${textarea("feedback", "Client feedback", project.feedback, "span-2")}
+      <button class="btn span-2" type="submit">Save Project</button>
+    </form>
+  `;
+}
+
+function meetingForm() {
+  const meeting = { clientId: state.drawer.clientId, ...record("meetings") };
+  return `
+    <form data-form="meeting" class="form-grid">
+      ${select("clientId", "Client", state.data.clients.map((c) => [c.id, c.name]), meeting.clientId)}
+      ${select("type", "Type", MEETING_TYPES, meeting.type || "Strategy Meeting")}
+      ${input("title", "Title", meeting.title, true)}
+      ${input("datetime", "Date and time", meeting.datetime || "", true, "datetime-local")}
+      ${select("status", "Status", ["Proposed", "Confirmed", "Completed", "Canceled"], meeting.status || "Proposed")}
+      ${select("proposedBy", "Proposed by", ["Agency", "Client"], meeting.proposedBy || "Agency")}
+      ${textarea("notes", "Agenda or notes", meeting.notes, "span-2")}
+      <button class="btn span-2" type="submit">Save Meeting</button>
+    </form>
+  `;
+}
+
+function dealForm() {
+  const deal = { clientId: state.drawer.clientId, ...record("deals") };
+  return `
+    <form data-form="deal" class="form-grid">
+      ${select("clientId", "Client", state.data.clients.map((c) => [c.id, c.name]), deal.clientId)}
+      ${input("name", "Deal name", deal.name, true)}
+      ${select("stage", "Stage", STAGES, deal.stage || "Lead")}
+      ${input("value", "Value", deal.value || 0, false, "number")}
+      ${input("probability", "Probability", deal.probability || 50, false, "number")}
+      ${input("closeDate", "Close date", deal.closeDate || addDays(30), false, "date")}
+      <button class="btn span-2" type="submit">Save Deal</button>
+    </form>
+  `;
+}
+
+function taskForm() {
+  const task = { clientId: state.drawer.clientId, ...record("tasks") };
+  return `
+    <form data-form="task" class="form-grid">
+      ${select("clientId", "Client", state.data.clients.map((c) => [c.id, c.name]), task.clientId)}
+      ${input("title", "Task", task.title, true)}
+      ${input("dueDate", "Due date", task.dueDate || today(), false, "date")}
+      ${select("priority", "Priority", PRIORITIES, task.priority || "Normal")}
+      <button class="btn span-2" type="submit">Save Task</button>
+    </form>
+  `;
+}
+
+function noteForm() {
+  const note = { clientId: state.drawer.clientId, ...record("notes") };
+  return `
+    <form data-form="note" class="form-grid">
+      ${select("clientId", "Client", state.data.clients.map((c) => [c.id, c.name]), note.clientId)}
+      ${textarea("body", "Note", note.body, "span-2", true)}
+      <button class="btn span-2" type="submit">Save Note</button>
+    </form>
+  `;
+}
+
+function input(name, label, value = "", required = false, type = "text", className = "") {
+  return `
+    <div class="field ${className}">
+      <label>${label}</label>
+      <input name="${name}" type="${type}" value="${escapeHtml(value)}" ${required ? "required" : ""} />
+    </div>
+  `;
+}
+
+function textarea(name, label, value = "", className = "", required = false) {
+  return `
+    <div class="field ${className}">
+      <label>${label}</label>
+      <textarea name="${name}" ${required ? "required" : ""}>${escapeHtml(value)}</textarea>
+    </div>
+  `;
+}
+
+function select(name, label, options, selected = "") {
+  const needsPlaceholder = name === "clientId" && !selected;
+  const normalizedOptions = options.map((option) => ({
+    value: Array.isArray(option) ? option[0] : option,
+    text: Array.isArray(option) ? option[1] : option,
+  }));
+  const optionHtml = options
+    .map((option) => {
+      const value = Array.isArray(option) ? option[0] : option;
+      const text = Array.isArray(option) ? option[1] : option;
+      return `<option value="${escapeHtml(value)}" ${value === selected ? "selected" : ""}>${escapeHtml(text)}</option>`;
+    })
+    .join("");
+  const placeholder = name === "clientId"
+    ? `<option value="" disabled ${needsPlaceholder ? "selected" : ""}>${normalizedOptions.length ? "Choose client" : "Add a client first"}</option>`
+    : "";
+  return `
+    <div class="field">
+      <label>${label}</label>
+      <select name="${name}" required>${placeholder}${optionHtml}</select>
+    </div>
+  `;
+}
+
+async function submitForm(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const type = form.dataset.form;
+  const values = Object.fromEntries(new FormData(form).entries());
+  const collections = {
+    client: "clients",
+    contact: "contacts",
+    onboarding: "onboarding",
+    questionnaire: "questionnaires",
+    project: "projects",
+    meeting: "meetings",
+    deal: "deals",
+    task: "tasks",
+    note: "notes",
+  };
+  const collection = collections[type];
+  const existing = state.drawer.id
+    ? state.data[collection].find((item) => item.id === state.drawer.id)
+    : null;
+  const next = normalizeRecord(type, values, existing);
+  if (existing) Object.assign(existing, next);
+  else if (type === "onboarding") {
+    const duplicate = getOnboarding(next.clientId);
+    if (duplicate) Object.assign(duplicate, next);
+    else state.data[collection].push(next);
+  } else if (type === "questionnaire") {
+    const duplicate = state.data.questionnaires.find((item) => item.clientId === next.clientId);
+    if (duplicate) Object.assign(duplicate, next);
+    else state.data[collection].push(next);
+  } else state.data[collection].push(next);
+  syncWorkflowFlags(type, next);
+  state.drawer = null;
+  await saveData(`${existing ? "Updated" : "Created"} ${type}`);
+  showToast(`${type[0].toUpperCase() + type.slice(1)} saved.`);
+  render();
+}
+
+function normalizeRecord(type, values, existing = {}) {
+  const base = { ...existing, ...values };
+  if (!base.id) base.id = id();
+  if (type === "client") {
+    base.value = Number(base.value || 0);
+    base.createdAt = base.createdAt || new Date().toISOString();
+  }
+  if (type === "deal") {
+    base.value = Number(base.value || 0);
+    base.probability = Math.max(0, Math.min(100, Number(base.probability || 0)));
+  }
+  if (type === "onboarding") {
+    ONBOARDING_STEPS.forEach(([key]) => {
+      base[key] = values[key] === "true";
+    });
+    base.welcomeCallConfirmed = values.welcomeCallConfirmed === "true";
+    base.strategyMeetingConfirmed = values.strategyMeetingConfirmed === "true";
+  }
+  if (type === "questionnaire") {
+    base.budgetRange = Number(base.budgetRange || 0);
+  }
+  if (type === "project") {
+    base.createdAt = base.createdAt || new Date().toISOString();
+  }
+  if (type === "meeting") {
+    base.status = base.status || "Proposed";
+    base.proposedBy = base.proposedBy || "Agency";
+  }
+  if (type === "task") {
+    base.done = Boolean(existing.done);
+  }
+  if (type === "note") {
+    base.createdAt = base.createdAt || new Date().toISOString();
+  }
+  return base;
+}
+
+function syncWorkflowFlags(type, record) {
+  if (!record.clientId) return;
+  if (type === "questionnaire") {
+    const checklist = ensureOnboarding(record.clientId);
+    checklist.questionnaireCompleted = true;
+  }
+  if (type === "project") {
+    const checklist = ensureOnboarding(record.clientId);
+    checklist.firstProjectCreated = true;
+  }
+  if (type === "meeting") {
+    const checklist = ensureOnboarding(record.clientId);
+    if (record.type === "Welcome Call") {
+      checklist.welcomeCallScheduled = record.status !== "Canceled";
+      checklist.welcomeCallDate = record.datetime;
+      checklist.welcomeCallConfirmed = record.status === "Confirmed" || record.status === "Completed";
+    }
+    if (record.type === "Strategy Meeting") {
+      checklist.strategyMeetingDate = record.datetime;
+      checklist.strategyMeetingConfirmed = record.status === "Confirmed" || record.status === "Completed";
+      checklist.strategyMeetingHeld = record.status === "Completed";
+    }
+  }
+}
+
+function ensureOnboarding(clientId) {
+  let checklist = getOnboarding(clientId);
+  if (!checklist) {
+    checklist = normalizeRecord("onboarding", { clientId });
+    state.data.onboarding.push(checklist);
+  }
+  return checklist;
+}
+
+async function deleteRecord(type, itemId) {
+  const message =
+    type === "client"
+      ? "Delete this client and all related contacts, deals, tasks, and notes?"
+      : "Delete this record?";
+  if (!confirm(message)) return;
+  if (type === "client") {
+    state.data.clients = state.data.clients.filter((item) => item.id !== itemId);
+    state.data.contacts = state.data.contacts.filter((item) => item.clientId !== itemId);
+    state.data.deals = state.data.deals.filter((item) => item.clientId !== itemId);
+    state.data.projects = state.data.projects.filter((item) => item.clientId !== itemId);
+    state.data.tasks = state.data.tasks.filter((item) => item.clientId !== itemId);
+    state.data.onboarding = state.data.onboarding.filter((item) => item.clientId !== itemId);
+    state.data.questionnaires = state.data.questionnaires.filter((item) => item.clientId !== itemId);
+    state.data.meetings = state.data.meetings.filter((item) => item.clientId !== itemId);
+    state.data.notes = state.data.notes.filter((item) => item.clientId !== itemId);
+  } else {
+    const collections = {
+      contact: "contacts",
+      onboarding: "onboarding",
+      questionnaire: "questionnaires",
+      project: "projects",
+      meeting: "meetings",
+      deal: "deals",
+      task: "tasks",
+      note: "notes",
+    };
+    state.data[collections[type]] = state.data[collections[type]].filter((item) => item.id !== itemId);
+  }
+  state.drawer = null;
+  await saveData(`Deleted ${type}`);
+  showToast("Record deleted.");
+  render();
+}
+
+async function moveDeal(dealId, stage) {
+  const deal = state.data.deals.find((item) => item.id === dealId);
+  if (!deal) return;
+  deal.stage = stage;
+  await saveData("Moved deal");
+  render();
+}
+
+async function toggleTask(taskId) {
+  const task = state.data.tasks.find((item) => item.id === taskId);
+  if (!task) return;
+  task.done = !task.done;
+  await saveData(task.done ? "Completed task" : "Reopened task");
+  render();
+}
+
+async function toggleOnboardingStep(clientId, step, checked) {
+  const checklist = ensureOnboarding(clientId);
+  checklist[step] = checked;
+  if (step === "questionnaireCompleted" && checked && !state.data.questionnaires.some((item) => item.clientId === clientId)) {
+    state.data.questionnaires.push(normalizeRecord("questionnaire", { clientId }));
+  }
+  await saveData(`${checked ? "Completed" : "Reopened"} onboarding step`);
+  render();
+}
+
+async function confirmMeeting(meetingId) {
+  const meeting = state.data.meetings.find((item) => item.id === meetingId);
+  if (!meeting) return;
+  meeting.status = "Confirmed";
+  syncWorkflowFlags("meeting", meeting);
+  await saveData("Confirmed meeting");
+  render();
+}
+
+function exportBackup() {
+  const blob = new Blob([localStorage.getItem(STORAGE_KEY)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `clientvault-backup-${today()}.json`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+async function importBackup(event) {
+  const [file] = event.target.files;
+  if (!file) return;
+  try {
+    const text = await file.text();
+    const payload = JSON.parse(text);
+    if (!payload.cipher || !payload.salt || !payload.iv) throw new Error("Invalid backup");
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+    showToast("Backup imported. Unlock again with its passphrase.");
+    lock();
+  } catch {
+    showToast("Import failed. Choose a valid encrypted backup JSON file.");
+  }
+}
+
+function toast() {
+  return state.toast ? `<div class="toast">${escapeHtml(state.toast)}</div>` : "";
+}

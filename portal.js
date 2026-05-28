@@ -24,6 +24,19 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
+function brandMark() {
+  return `
+    <div class="brand-mark" aria-hidden="true">
+      <svg viewBox="0 0 48 48" role="img">
+        <rect x="9" y="17" width="30" height="23" rx="4"></rect>
+        <path d="M16 17v-4a8 8 0 0 1 16 0v4"></path>
+        <circle cx="24" cy="28" r="4"></circle>
+        <path d="M24 32v4"></path>
+      </svg>
+    </div>
+  `;
+}
+
 function money(value) {
   return Number(value || 0).toLocaleString(undefined, {
     style: "currency",
@@ -58,7 +71,7 @@ function loginScreen() {
     <section class="lock-screen">
       <form class="lock-card" data-login>
         <div class="brand-row">
-          <div class="brand-mark">CV</div>
+          ${brandMark()}
           <div>
             <div class="eyebrow">Client portal</div>
             <h1>ClientVault Portal</h1>

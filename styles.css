@@ -148,7 +148,17 @@ button:disabled {
   border-radius: 8px;
   background: var(--brand);
   color: white;
-  font-weight: 800;
+  flex: 0 0 auto;
+}
+
+.brand-mark svg {
+  width: 28px;
+  height: 28px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .eyebrow {

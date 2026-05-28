@@ -56,6 +56,8 @@ const ONBOARDING_STEPS = ONBOARDING_STAGES.flatMap((stage) => stage.steps);
 const state = {
   entry: "",
   unlocked: false,
+  loading: true,
+  sessionEmail: "",
   key: null,
   salt: null,
   data: null,
@@ -90,7 +92,7 @@ const app = document.querySelector("#app");
 LEGACY_STORAGE_KEYS.forEach((key) => localStorage.removeItem(key));
 LEGACY_PORTAL_ADMIN_SECRET_KEYS.forEach((key) => localStorage.removeItem(key));
 
-window.addEventListener("load", render);
+window.addEventListener("load", initialize);
 window.addEventListener("mousemove", scheduleAutoLock);
 window.addEventListener("keydown", scheduleAutoLock);
 window.addEventListener("click", scheduleAutoLock);
@@ -235,6 +237,27 @@ async function decryptData(key, payload) {
   return JSON.parse(new TextDecoder().decode(plain));
 }
 
+async function initialize() {
+  LEGACY_STORAGE_KEYS.concat(STORAGE_KEY).forEach((key) => localStorage.removeItem(key));
+  try {
+    const response = await fetch("/api/admin-session", { credentials: "same-origin" });
+    if (response.ok) {
+      const payload = await response.json();
+      state.data = hydrateData(payload.data);
+      state.sessionEmail = payload.email || "";
+      state.unlocked = true;
+      state.entry = "admin";
+      scheduleAutoLock();
+      await autoSyncPortalUpdates();
+    }
+  } catch {
+    state.unlocked = false;
+  } finally {
+    state.loading = false;
+    render();
+  }
+}
+
 async function saveData(action = "Saved") {
   if (!state.unlocked) return;
   state.data.updatedAt = new Date().toISOString();
@@ -244,48 +267,53 @@ async function saveData(action = "Saved") {
     at: new Date().toISOString(),
   });
   state.data.audit = state.data.audit.slice(0, 100);
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(await encryptData(state.data)));
+  const response = await fetch("/api/crm-data", {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify({ action, data: state.data }),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.error || "Could not save CRM data");
+  state.data = hydrateData(payload.data);
 }
 
 async function unlock(event) {
   event.preventDefault();
   const form = new FormData(event.currentTarget);
-  const passphrase = String(form.get("passphrase") || "");
-  const payloadRaw = localStorage.getItem(STORAGE_KEY);
+  const email = String(form.get("email") || "");
+  const password = String(form.get("password") || "");
   try {
-    if (payloadRaw) {
-      const payload = JSON.parse(payloadRaw);
-      const salt = base64ToBytes(payload.salt);
-      const key = await deriveKey(passphrase, salt);
-      state.data = hydrateData(await decryptData(key, payload));
-      state.key = key;
-      state.salt = salt;
-    } else {
-      if (passphrase.length < 12) {
-        showToast("Use at least 12 characters for the vault passphrase.");
-        return;
-      }
-      state.salt = crypto.getRandomValues(new Uint8Array(16));
-      state.key = await deriveKey(passphrase, state.salt);
-      state.data = blankData();
-      state.unlocked = true;
-      await saveData("Created encrypted vault");
-    }
+    const response = await fetch("/api/admin-login", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({ email, password }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || "Could not sign in");
+    state.data = hydrateData(payload.data);
+    state.sessionEmail = email.trim().toLowerCase();
     state.unlocked = true;
-    showToast("Vault unlocked.");
+    state.entry = "admin";
+    showToast("Signed in.");
     scheduleAutoLock();
     render();
     await autoSyncPortalUpdates();
-  } catch {
-    showToast("Could not unlock vault. Check the passphrase.");
+  } catch (error) {
+    showToast(error.message || "Could not sign in.");
   }
 }
 
-function lock() {
+async function lock() {
+  try {
+    await fetch("/api/admin-logout", { method: "POST", credentials: "same-origin" });
+  } catch {}
   state.unlocked = false;
   state.key = null;
   state.data = null;
   state.drawer = null;
+  state.sessionEmail = "";
   clearTimeout(state.timer);
   render();
 }
@@ -311,6 +339,17 @@ function showToast(message) {
 }
 
 function render() {
+  if (state.loading) {
+    app.innerHTML = `
+      <section class="lock-screen">
+        <div class="lock-card">
+          <div class="brand-row">${brandMark()}<div><div class="eyebrow">ClientVault</div><h1>Loading CRM</h1></div></div>
+          <p class="muted">Checking your secure admin session.</p>
+        </div>
+      </section>
+    `;
+    return;
+  }
   if (!state.unlocked && state.entry !== "admin") {
     app.innerHTML = landingScreen();
     app.querySelector("[data-entry='admin']").addEventListener("click", () => {
@@ -356,24 +395,27 @@ function landingScreen() {
 }
 
 function lockScreen() {
-  const exists = Boolean(localStorage.getItem(STORAGE_KEY));
   return `
     <section class="lock-screen">
       <form class="lock-card">
         <div class="brand-row">
           ${brandMark()}
           <div>
-            <div class="eyebrow">Encrypted local CRM</div>
+            <div class="eyebrow">Secure admin CRM</div>
             <h1>ClientVault CRM</h1>
           </div>
         </div>
-        <p class="muted">${exists ? "Unlock your client vault." : "Create your encrypted CRM vault on this device."}</p>
+        <p class="muted">Sign in to your database-backed CRM workspace.</p>
         <div class="field">
-          <label for="passphrase">Vault passphrase</label>
-          <input id="passphrase" name="passphrase" type="password" autocomplete="current-password" minlength="12" required autofocus />
+          <label for="email">Admin email</label>
+          <input id="email" name="email" type="email" autocomplete="username" required autofocus />
         </div>
-        <button class="btn" type="submit">${exists ? "Unlock CRM" : "Create Secure Vault"}</button>
-        <p class="secure-note space-top">Data is encrypted in this browser with AES-GCM before it is saved. There is no password recovery, so keep the passphrase somewhere safe.</p>
+        <div class="field">
+          <label for="password">Admin password</label>
+          <input id="password" name="password" type="password" autocomplete="current-password" minlength="12" required />
+        </div>
+        <button class="btn" type="submit">Sign In</button>
+        <p class="secure-note space-top">Client records are stored server-side in Postgres. Configure admin credentials and database environment variables in Vercel before using this with real clients.</p>
       </form>
       ${toast()}
     </section>
@@ -1375,19 +1417,18 @@ function noteCards() {
 }
 
 function settingsView() {
-  const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
   return `
     <div class="section-head">
       <div>
         <h1>Settings</h1>
-        <p class="muted">Backup, restore, and vault metadata.</p>
+        <p class="muted">Backup, restore, sync, and account metadata.</p>
       </div>
     </div>
     <section class="panel">
       <div class="panel-body">
-        <p class="secure-note">Backups are encrypted with the same vault passphrase. Importing replaces the current vault on this device.</p>
+        <p class="secure-note">CRM records are saved in Postgres. Exports are plain JSON for portability, so store downloaded backups carefully.</p>
         <div class="section-actions settings-actions">
-          <button class="btn" data-action="export">Export Encrypted Backup</button>
+          <button class="btn" data-action="export">Export JSON Backup</button>
           <label class="btn secondary">Import Backup<input data-action="import" type="file" accept="application/json" hidden /></label>
           <button class="btn secondary" data-action="sync-portal">Sync Portal Updates</button>
         </div>
@@ -1396,7 +1437,8 @@ function settingsView() {
           <button class="btn span-2" type="submit">Save Sync Secret</button>
         </form>
         <p><strong>Records:</strong> ${state.data.clients.length} clients, ${state.data.contacts.length} contacts, ${state.data.deals.length} deals, ${state.data.tasks.length} tasks, ${state.data.notes.length} notes.</p>
-        <p><strong>Last saved:</strong> ${escapeHtml(saved.savedAt || "Unknown")}</p>
+        <p><strong>Signed in:</strong> ${escapeHtml(state.sessionEmail || "Admin")}</p>
+        <p><strong>Last saved:</strong> ${escapeHtml(state.data.updatedAt || "Unknown")}</p>
         <p><strong>Auto-lock:</strong> 15 minutes of inactivity.</p>
       </div>
     </section>
@@ -2118,7 +2160,7 @@ async function confirmMeeting(meetingId) {
 }
 
 function exportBackup() {
-  const blob = new Blob([localStorage.getItem(STORAGE_KEY)], { type: "application/json" });
+  const blob = new Blob([JSON.stringify(state.data, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
@@ -2133,12 +2175,13 @@ async function importBackup(event) {
   try {
     const text = await file.text();
     const payload = JSON.parse(text);
-    if (!payload.cipher || !payload.salt || !payload.iv) throw new Error("Invalid backup");
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-    showToast("Backup imported. Unlock again with its passphrase.");
-    lock();
-  } catch {
-    showToast("Import failed. Choose a valid encrypted backup JSON file.");
+    if (!payload || !Array.isArray(payload.clients)) throw new Error("Invalid backup");
+    state.data = hydrateData(payload);
+    await saveData("Imported CRM backup");
+    showToast("Backup imported.");
+    render();
+  } catch (error) {
+    showToast(error.message || "Import failed. Choose a valid ClientVault JSON backup.");
   }
 }
 

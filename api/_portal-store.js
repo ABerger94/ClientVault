@@ -1,5 +1,6 @@
 import { get, put } from "@vercel/blob";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { hasDatabase, readKv, writeKv } from "./_db.js";
 
 const INDEX_PATH = "portal/index.json";
 const ADMIN_PATH = "portal/admin.json";
@@ -12,6 +13,7 @@ export function json(res, status, body) {
 }
 
 export async function readJson(path, fallback = null) {
+  if (hasDatabase()) return await readKv(path, fallback);
   try {
     const blob = await get(path);
     const response = await fetch(blob.downloadUrl || blob.url);
@@ -23,6 +25,10 @@ export async function readJson(path, fallback = null) {
 }
 
 export async function writeJson(path, value) {
+  if (hasDatabase()) {
+    await writeKv(path, value);
+    return;
+  }
   await put(path, JSON.stringify(value), {
     access: "private",
     allowOverwrite: true,

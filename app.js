@@ -414,7 +414,7 @@ function lockScreen() {
         </div>
         <div class="field">
           <label for="password">Admin password</label>
-          <input id="password" name="password" type="password" autocomplete="current-password" minlength="12" required />
+          <input id="password" name="password" type="password" autocomplete="current-password" required />
         </div>
         <button class="btn" type="submit">Sign In</button>
         <p class="secure-note space-top">Client records are stored server-side in Postgres. Configure admin credentials and database environment variables in Vercel before using this with real clients.</p>

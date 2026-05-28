@@ -20,7 +20,15 @@ Required Vercel environment variables:
 - `CLIENTVAULT_ADMIN_EMAIL`
 - `CLIENTVAULT_ADMIN_PASSWORD`
 - `CLIENTVAULT_SESSION_SECRET`
+- `PORTAL_ADMIN_SECRET`
 - Vercel Blob variables from the linked Blob store
+
+Optional email invite variables:
+
+- `RESEND_API_KEY`
+- `RESEND_FROM_EMAIL`
+- `CLIENTVAULT_PUBLIC_URL`
+- `CLIENTVAULT_SUPPORT_EMAIL`
 
 Recommended before long-term production use:
 
@@ -38,6 +46,7 @@ When Postgres is configured, CRM state, portal records, portal updates, and audi
 - Account health scoring, weighted pipeline forecast, delivery risk, and automation cues.
 - Public landing page with Admin Login and Client Login entry points.
 - Separate client portal login backed by Vercel serverless functions.
+- Automatic Resend portal invite emails when portal access is published.
 - Portal-side write APIs for meeting requests, confirmations, questionnaires, support requests, and onboarding steps.
 - Automatic portal sync on admin/client login when a sync secret is saved.
 - Pipeline board with stage movement.

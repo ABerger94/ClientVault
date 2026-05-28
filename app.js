@@ -1605,7 +1605,7 @@ function portalAccessForm() {
   const contact = state.data.contacts.find((item) => item.clientId === state.drawer.clientId);
   return `
     <form data-form="portalAccess" class="form-grid">
-      <div class="secure-note span-2">Publish a read-only client portal snapshot to Vercel. The client signs in at /portal.html with their email and access code.</div>
+      <div class="secure-note span-2">Publish a client portal snapshot and send the client an invite email with their portal link and access code when Resend is configured.</div>
       ${input("adminSecret", "Portal admin secret", "", true, "password", "span-2")}
       ${input("email", "Client login email", contact?.email || client?.email || "", true, "email")}
       ${input("accessCode", "Client access code", "", true, "text")}
@@ -1837,7 +1837,10 @@ async function publishPortalAccess(values) {
     localStorage.setItem(PORTAL_ADMIN_SECRET_KEY, values.adminSecret);
     state.drawer = null;
     await saveData(`Published portal for ${client.name}`);
-    showToast(`Portal published. Client login: ${location.origin}${result.portalUrl}`);
+    const inviteMessage = result.invite?.sent
+      ? "Invite email sent."
+      : `Invite email not sent: ${result.invite?.reason || "Resend is not configured."}`;
+    showToast(`Portal published. ${inviteMessage}`);
     render();
   } catch (error) {
     showToast(error.message);

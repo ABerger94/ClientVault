@@ -1,0 +1,9 @@
+{
+  "type": "module",
+  "scripts": {
+    "check": "node --check app.js"
+  },
+  "dependencies": {
+    "@vercel/blob": "^2.4.0"
+  }
+}

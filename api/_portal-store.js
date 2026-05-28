@@ -1,0 +1,78 @@
+import { get, put } from "@vercel/blob";
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+
+const INDEX_PATH = "portal/index.json";
+const ADMIN_PATH = "portal/admin.json";
+
+export function json(res, status, body) {
+  res.statusCode = status;
+  res.setHeader("content-type", "application/json; charset=utf-8");
+  res.end(JSON.stringify(body));
+}
+
+export async function readJson(path, fallback = null) {
+  try {
+    const blob = await get(path);
+    const response = await fetch(blob.downloadUrl || blob.url);
+    if (!response.ok) return fallback;
+    return await response.json();
+  } catch {
+    return fallback;
+  }
+}
+
+export async function writeJson(path, value) {
+  await put(path, JSON.stringify(value), {
+    access: "private",
+    allowOverwrite: true,
+    contentType: "application/json",
+    cacheControlMaxAge: 60,
+  });
+}
+
+export async function readBody(req) {
+  const chunks = [];
+  for await (const chunk of req) chunks.push(chunk);
+  return JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
+}
+
+export function hashSecret(secret, salt) {
+  return createHash("sha256").update(`${salt}:${secret}`).digest("hex");
+}
+
+export function newSalt() {
+  return randomBytes(16).toString("hex");
+}
+
+export function safeEqual(a, b) {
+  const left = Buffer.from(String(a || ""), "hex");
+  const right = Buffer.from(String(b || ""), "hex");
+  return left.length === right.length && timingSafeEqual(left, right);
+}
+
+export async function verifyAdminSecret(secret) {
+  const admin = await readJson(ADMIN_PATH);
+  if (!admin) {
+    if (!secret || secret.length < 12) return false;
+    const salt = newSalt();
+    await writeJson(ADMIN_PATH, {
+      salt,
+      hash: hashSecret(secret, salt),
+      createdAt: new Date().toISOString(),
+    });
+    return true;
+  }
+  return Boolean(secret) && safeEqual(hashSecret(secret, admin.salt), admin.hash);
+}
+
+export async function readIndex() {
+  return await readJson(INDEX_PATH, { clients: [] });
+}
+
+export async function writeIndex(index) {
+  await writeJson(INDEX_PATH, index);
+}
+
+export function portalPath(portalId) {
+  return `portal/clients/${portalId}.json`;
+}

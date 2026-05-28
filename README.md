@@ -13,6 +13,8 @@ Open `index.html` in a modern browser. No build step is required.
 - Clients, first-class contact management, deals, projects, tasks, notes, activity audit, and dashboard.
 - Onboarding checklists, onboarding questionnaires, meeting scheduling, and upcoming event tracking.
 - Account health scoring, weighted pipeline forecast, delivery risk, and automation cues.
+- Public landing page with Admin Login and Client Login entry points.
+- Separate client portal login backed by Vercel serverless functions and private Vercel Blob storage.
 - Pipeline board with stage movement.
 - Global client/contact search.
 - Encrypted backup export and restore.

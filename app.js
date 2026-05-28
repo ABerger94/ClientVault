@@ -20,11 +20,14 @@ const ONBOARDING_STEPS = [
 ];
 
 const state = {
+  entry: "",
   unlocked: false,
   key: null,
   salt: null,
   data: null,
   view: "dashboard",
+  portalClientId: "",
+  portalTab: "home",
   query: "",
   drawer: null,
   toast: "",
@@ -367,6 +370,14 @@ function showToast(message) {
 }
 
 function render() {
+  if (!state.unlocked && state.entry !== "admin") {
+    app.innerHTML = landingScreen();
+    app.querySelector("[data-entry='admin']").addEventListener("click", () => {
+      state.entry = "admin";
+      render();
+    });
+    return;
+  }
   if (!state.unlocked) {
     app.innerHTML = lockScreen();
     app.querySelector("form").addEventListener("submit", unlock);
@@ -374,6 +385,33 @@ function render() {
   }
   app.innerHTML = shell();
   bindShell();
+}
+
+function landingScreen() {
+  return `
+    <section class="landing-screen">
+      <div class="landing-panel">
+        <div class="brand-row">
+          <div class="brand-mark">CV</div>
+          <div>
+            <div class="eyebrow">Private client operating system</div>
+            <h1>ClientVault</h1>
+          </div>
+        </div>
+        <p class="landing-copy">Secure CRM, project delivery, onboarding, scheduling, and client portal access in one workspace.</p>
+        <div class="login-choice-grid">
+          <button class="login-choice" data-entry="admin">
+            <span>Admin Login</span>
+            <strong>Manage clients, deals, projects, onboarding, and portal publishing.</strong>
+          </button>
+          <a class="login-choice" href="./portal.html">
+            <span>Client Login</span>
+            <strong>Access your shared projects, meetings, onboarding, and files.</strong>
+          </a>
+        </div>
+      </div>
+    </section>
+  `;
 }
 
 function lockScreen() {
@@ -422,6 +460,7 @@ function shell() {
           ${navButton("pipeline", "Pipeline")}
           ${navButton("tasks", "Tasks")}
           ${navButton("insights", "Insights")}
+          ${navButton("portal", "Client Portal")}
           ${navButton("notes", "Notes")}
           ${navButton("settings", "Settings")}
         </nav>
@@ -455,6 +494,20 @@ function bindShell() {
   app.querySelectorAll("[data-view]").forEach((button) => {
     button.addEventListener("click", () => {
       state.view = button.dataset.view;
+      render();
+    });
+  });
+  app.querySelectorAll("[data-portal-tab]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.portalTab = button.dataset.portalTab;
+      render();
+    });
+  });
+  app.querySelectorAll("[data-portal-client]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.portalClientId = button.dataset.portalClient;
+      state.view = "portal";
+      state.portalTab = "home";
       render();
     });
   });
@@ -511,6 +564,13 @@ function bindShell() {
   if (exportButton) exportButton.addEventListener("click", exportBackup);
   const importInput = app.querySelector("[data-action='import']");
   if (importInput) importInput.addEventListener("change", importBackup);
+  const portalClient = app.querySelector("[data-action='portal-client']");
+  if (portalClient) {
+    portalClient.addEventListener("change", (event) => {
+      state.portalClientId = event.target.value;
+      render();
+    });
+  }
 }
 
 function view() {
@@ -522,6 +582,7 @@ function view() {
   if (state.view === "pipeline") return pipelineView();
   if (state.view === "tasks") return tasksView();
   if (state.view === "insights") return insightsView();
+  if (state.view === "portal") return portalView();
   if (state.view === "notes") return notesView();
   if (state.view === "settings") return settingsView();
   return dashboardView();
@@ -614,9 +675,11 @@ function clientRows(clients) {
           <div class="inline-actions">
             <button class="btn secondary" data-edit="client" data-id="${client.id}">Edit</button>
             <button class="btn secondary" data-open="contact" data-client="${client.id}">Contact</button>
-            <button class="btn secondary" data-open="deal" data-client="${client.id}">Deal</button>
-            <button class="btn secondary" data-open="project" data-client="${client.id}">Project</button>
-          </div>
+          <button class="btn secondary" data-open="deal" data-client="${client.id}">Deal</button>
+          <button class="btn secondary" data-open="project" data-client="${client.id}">Project</button>
+          <button class="btn secondary" data-portal-client="${client.id}">Portal</button>
+          <button class="btn secondary" data-open="portalAccess" data-client="${client.id}">Publish</button>
+        </div>
           <div class="span-2 row-sub">${contacts.map((contact) => escapeHtml(`${contact.name} <${contact.email}>`)).join(" · ")}</div>
         </article>
       `;
@@ -775,6 +838,224 @@ function daysSince(dateValue) {
   now.setHours(0, 0, 0, 0);
   date.setHours(0, 0, 0, 0);
   return Math.floor((now - date) / (1000 * 60 * 60 * 24));
+}
+
+function portalView() {
+  if (!state.portalClientId && state.data.clients.length) {
+    state.portalClientId = state.data.clients[0].id;
+  }
+  const client = getClient(state.portalClientId);
+  if (!client) {
+    return `
+      <div class="section-head">
+        <div>
+          <h1>Client Portal</h1>
+          <p class="muted">Add a client before opening the client-facing portal.</p>
+        </div>
+      </div>
+      <section class="panel"><div class="empty">No clients available.</div></section>
+    `;
+  }
+  return `
+    <div class="section-head">
+      <div>
+        <h1>Client Portal</h1>
+        <p class="muted">Client-facing workspace preview for projects, onboarding, meetings, and support.</p>
+      </div>
+      <div class="section-actions portal-select">
+        <select data-action="portal-client" aria-label="Portal client">
+          ${state.data.clients.map((item) => `<option value="${item.id}" ${item.id === client.id ? "selected" : ""}>${escapeHtml(item.name)}</option>`).join("")}
+        </select>
+      </div>
+    </div>
+    <section class="portal-shell">
+      <header class="portal-hero">
+        <div>
+          <div class="eyebrow">Client workspace</div>
+          <h2>${escapeHtml(client.company || client.name)}</h2>
+          <p>${escapeHtml(client.nextStep || "Track project progress, meetings, and onboarding from one place.")}</p>
+        </div>
+        <div class="portal-health">
+          <span class="muted">Account health</span>
+          <strong>${clientHealthScore(client)}/100</strong>
+        </div>
+      </header>
+      <nav class="portal-tabs">
+        ${portalTab("home", "Home")}
+        ${portalTab("projects", "Projects")}
+        ${portalTab("onboarding", "Onboarding")}
+        ${portalTab("schedule", "Schedule")}
+        ${portalTab("questionnaire", "Questionnaire")}
+        ${portalTab("support", "Support")}
+        ${portalTab("files", "Files")}
+      </nav>
+      <div class="portal-body">${portalTabView(client)}</div>
+    </section>
+  `;
+}
+
+function portalTab(tab, label) {
+  return `<button class="${state.portalTab === tab ? "active" : ""}" data-portal-tab="${tab}">${label}</button>`;
+}
+
+function portalTabView(client) {
+  if (state.portalTab === "projects") return portalProjects(client);
+  if (state.portalTab === "onboarding") return portalOnboarding(client);
+  if (state.portalTab === "schedule") return portalSchedule(client);
+  if (state.portalTab === "questionnaire") return portalQuestionnaire(client);
+  if (state.portalTab === "support") return portalSupport(client);
+  if (state.portalTab === "files") return portalFiles(client);
+  return portalHome(client);
+}
+
+function portalHome(client) {
+  const projects = clientProjects(client.id);
+  const meetings = clientMeetings(client.id).filter((meeting) => meeting.status !== "Canceled");
+  const nextMeeting = meetings.find((meeting) => meeting.datetime >= new Date().toISOString().slice(0, 16));
+  return `
+    <div class="portal-grid">
+      ${portalMetric("Active projects", projects.filter((project) => !["Delivered", "Approved"].includes(project.status)).length)}
+      ${portalMetric("Open tasks", state.data.tasks.filter((task) => task.clientId === client.id && !task.done).length)}
+      ${portalMetric("Next meeting", nextMeeting ? formatDateTime(nextMeeting.datetime) : "None")}
+    </div>
+    <div class="layout-two">
+      <section class="panel">
+        <div class="panel-head"><h2>Project Snapshot</h2></div>
+        <div class="panel-body">${projectCards(projects.slice(0, 3))}</div>
+      </section>
+      <section class="panel">
+        <div class="panel-head"><h2>Next Steps</h2></div>
+        <div class="panel-body">${clientPortalNextSteps(client)}</div>
+      </section>
+    </div>
+  `;
+}
+
+function portalMetric(label, value) {
+  return `<div class="portal-metric"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`;
+}
+
+function clientPortalNextSteps(client) {
+  const items = [];
+  const checklist = getOnboarding(client.id);
+  if (checklist) {
+    ONBOARDING_STEPS.forEach(([key, label]) => {
+      if (!checklist[key] && items.length < 5) items.push(label);
+    });
+  }
+  state.data.tasks
+    .filter((task) => task.clientId === client.id && !task.done)
+    .slice(0, 5)
+    .forEach((task) => items.push(task.title));
+  if (!items.length) return `<div class="empty">No open next steps.</div>`;
+  return items.map((item) => `<article class="event-row"><strong>${escapeHtml(item)}</strong><span class="pill">Open</span></article>`).join("");
+}
+
+function portalProjects(client) {
+  return projectCards(clientProjects(client.id));
+}
+
+function portalOnboarding(client) {
+  const checklist = getOnboarding(client.id);
+  if (!checklist) return `<div class="empty">No onboarding checklist has been shared yet.</div>`;
+  const completeCount = ONBOARDING_STEPS.filter(([key]) => Boolean(checklist[key])).length;
+  const percent = Math.round((completeCount / ONBOARDING_STEPS.length) * 100);
+  return `
+    <section class="panel">
+      <div class="panel-head"><h2>Onboarding Progress</h2><span class="pill active">${percent}%</span></div>
+      <div class="panel-body">
+        <div class="progress"><span style="width:${percent}%"></span></div>
+        <div class="checklist">
+          ${ONBOARDING_STEPS.map(([key, label]) => `
+            <div class="check-row">
+              <input type="checkbox" disabled ${checklist[key] ? "checked" : ""} />
+              <span>${escapeHtml(label)}</span>
+            </div>
+          `).join("")}
+        </div>
+        ${checklist.notes ? `<p class="secure-note">${escapeHtml(checklist.notes)}</p>` : ""}
+      </div>
+    </section>
+  `;
+}
+
+function portalSchedule(client) {
+  const meetings = clientMeetings(client.id);
+  return `
+    <div class="section-actions settings-actions">
+      <button class="btn" data-open="meeting" data-client="${client.id}">Request Meeting</button>
+    </div>
+    ${meetingCards(meetings)}
+  `;
+}
+
+function portalQuestionnaire(client) {
+  const questionnaire = state.data.questionnaires.find((item) => item.clientId === client.id);
+  if (!questionnaire) {
+    return `
+      <section class="panel">
+        <div class="panel-body">
+          <div class="empty">No questionnaire has been completed yet.</div>
+          <button class="btn" data-open="questionnaire" data-client="${client.id}">Complete Questionnaire</button>
+        </div>
+      </section>
+    `;
+  }
+  return `
+    <section class="panel">
+      <div class="panel-head"><h2>Questionnaire</h2><button class="btn secondary" data-open="questionnaire" data-client="${client.id}">Update</button></div>
+      <div class="panel-body qa-grid">
+        ${qa("Primary goal", questionnaire.primaryGoal)}
+        ${qa("Timeline", questionnaire.timeline)}
+        ${qa("Budget", money(questionnaire.budgetRange))}
+        ${qa("Design style", questionnaire.designStyle)}
+        ${qa("Target audience", questionnaire.targetAudience)}
+        ${qa("Services", questionnaire.mainServices)}
+        ${qa("Unique value", questionnaire.uniqueValue)}
+        ${qa("Additional notes", questionnaire.additionalNotes)}
+      </div>
+    </section>
+  `;
+}
+
+function qa(label, value) {
+  return `<div class="qa"><span class="row-sub">${escapeHtml(label)}</span><strong>${escapeHtml(value || "Not provided")}</strong></div>`;
+}
+
+function portalSupport(client) {
+  const clientTasks = state.data.tasks.filter((task) => task.clientId === client.id);
+  return `
+    <div class="section-actions settings-actions">
+      <button class="btn" data-open="task" data-client="${client.id}">New Support Request</button>
+    </div>
+    ${taskCards(clientTasks)}
+  `;
+}
+
+function portalFiles(client) {
+  const projects = clientProjects(client.id).filter((project) => project.deliverableUrl);
+  if (!projects.length) return `<div class="empty">No deliverables or shared links yet.</div>`;
+  return projects.map((project) => `
+    <article class="event-row">
+      <div>
+        <strong>${escapeHtml(project.name)}</strong>
+        <div class="row-sub">${escapeHtml(project.deliverableUrl)}</div>
+      </div>
+      <a class="btn secondary" href="${escapeHtml(project.deliverableUrl)}" target="_blank" rel="noreferrer">Open</a>
+    </article>
+  `).join("");
+}
+
+function clientProjects(clientId) {
+  return state.data.projects
+    .filter((project) => project.clientId === clientId)
+    .sort((a, b) => (a.dueDate || "9999-12-31").localeCompare(b.dueDate || "9999-12-31"));
+}
+
+function clientMeetings(clientId) {
+  return state.data.meetings
+    .filter((meeting) => meeting.clientId === clientId)
+    .sort((a, b) => (a.datetime || "").localeCompare(b.datetime || ""));
 }
 
 function onboardingView() {
@@ -1159,6 +1440,7 @@ function drawerTitle() {
     contact: "Contact",
     onboarding: "Onboarding Checklist",
     questionnaire: "Questionnaire",
+    portalAccess: "Portal Access",
     project: "Project",
     meeting: "Meeting",
     deal: "Deal",
@@ -1174,6 +1456,7 @@ function drawerForm() {
   if (type === "contact") return contactForm();
   if (type === "onboarding") return onboardingForm();
   if (type === "questionnaire") return questionnaireForm();
+  if (type === "portalAccess") return portalAccessForm();
   if (type === "project") return projectForm();
   if (type === "meeting") return meetingForm();
   if (type === "deal") return dealForm();
@@ -1264,6 +1547,20 @@ function questionnaireForm() {
       ${textarea("socialMedia", "Social media handles", questionnaire.socialMedia, "span-2")}
       ${textarea("additionalNotes", "Additional notes", questionnaire.additionalNotes, "span-2")}
       <button class="btn span-2" type="submit">Save Questionnaire</button>
+    </form>
+  `;
+}
+
+function portalAccessForm() {
+  const client = getClient(state.drawer.clientId);
+  const contact = state.data.contacts.find((item) => item.clientId === state.drawer.clientId);
+  return `
+    <form data-form="portalAccess" class="form-grid">
+      <div class="secure-note span-2">Publish a read-only client portal snapshot to Vercel. The client signs in at /portal.html with their email and access code.</div>
+      ${input("adminSecret", "Portal admin secret", "", true, "password", "span-2")}
+      ${input("email", "Client login email", contact?.email || client?.email || "", true, "email")}
+      ${input("accessCode", "Client access code", "", true, "text")}
+      <button class="btn span-2" type="submit">Publish Portal Access</button>
     </form>
   `;
 }
@@ -1388,6 +1685,10 @@ async function submitForm(event) {
   const form = event.currentTarget;
   const type = form.dataset.form;
   const values = Object.fromEntries(new FormData(form).entries());
+  if (type === "portalAccess") {
+    await publishPortalAccess(values);
+    return;
+  }
   const collections = {
     client: "clients",
     contact: "contacts",
@@ -1456,6 +1757,63 @@ function normalizeRecord(type, values, existing = {}) {
     base.createdAt = base.createdAt || new Date().toISOString();
   }
   return base;
+}
+
+async function publishPortalAccess(values) {
+  const client = getClient(state.drawer.clientId);
+  if (!client) {
+    showToast("Choose a client before publishing portal access.");
+    return;
+  }
+  try {
+    const response = await fetch("/api/portal-publish", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        adminSecret: values.adminSecret,
+        email: values.email,
+        accessCode: values.accessCode,
+        snapshot: buildPortalSnapshot(client.id),
+      }),
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "Portal publish failed.");
+    state.drawer = null;
+    await saveData(`Published portal for ${client.name}`);
+    showToast(`Portal published. Client login: ${location.origin}${result.portalUrl}`);
+    render();
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
+function buildPortalSnapshot(clientId) {
+  const client = getClient(clientId);
+  const checklist = getOnboarding(clientId);
+  return {
+    client: {
+      id: client.id,
+      name: client.name,
+      company: client.company,
+      status: client.status,
+      email: client.email,
+      phone: client.phone,
+      website: client.website,
+      nextStep: client.nextStep,
+    },
+    contacts: state.data.contacts.filter((item) => item.clientId === clientId),
+    projects: clientProjects(clientId),
+    meetings: clientMeetings(clientId),
+    tasks: state.data.tasks.filter((item) => item.clientId === clientId),
+    notes: state.data.notes.filter((item) => item.clientId === clientId),
+    questionnaire: state.data.questionnaires.find((item) => item.clientId === clientId) || null,
+    onboarding: checklist
+      ? {
+          notes: checklist.notes || "",
+          steps: Object.fromEntries(ONBOARDING_STEPS.map(([key, label]) => [label, Boolean(checklist[key])])),
+        }
+      : null,
+  };
 }
 
 function syncWorkflowFlags(type, record) {

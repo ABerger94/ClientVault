@@ -61,6 +61,69 @@ button:disabled {
     linear-gradient(315deg, rgba(165, 79, 42, 0.1), transparent 30%), var(--bg);
 }
 
+.landing-screen {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background:
+    linear-gradient(135deg, rgba(17, 100, 102, 0.1), transparent 36%),
+    linear-gradient(315deg, rgba(165, 79, 42, 0.12), transparent 34%), var(--bg);
+}
+
+.landing-panel {
+  width: min(100%, 880px);
+}
+
+.landing-panel h1 {
+  font-size: 42px;
+  margin-bottom: 4px;
+}
+
+.landing-copy {
+  max-width: 640px;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1.55;
+  margin-bottom: 24px;
+}
+
+.login-choice-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.login-choice {
+  display: grid;
+  gap: 10px;
+  min-height: 168px;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--ink);
+  text-align: left;
+  text-decoration: none;
+  box-shadow: var(--shadow);
+}
+
+.login-choice:hover {
+  border-color: var(--brand);
+}
+
+.login-choice span {
+  font-size: 22px;
+  font-weight: 850;
+}
+
+.login-choice strong {
+  align-self: end;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
 .lock-card {
   width: min(100%, 480px);
   background: var(--panel);
@@ -527,6 +590,117 @@ textarea:focus {
   border-bottom: 0;
 }
 
+.portal-shell,
+.portal-public {
+  display: grid;
+  gap: 12px;
+}
+
+.portal-public {
+  min-height: 100vh;
+  padding: 22px;
+}
+
+.portal-hero {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 18px;
+  padding: 20px;
+  border-radius: var(--radius);
+  background: #101820;
+  color: #fff;
+}
+
+.portal-hero p,
+.portal-hero .muted {
+  color: #dbe5ee;
+}
+
+.portal-health {
+  display: grid;
+  gap: 6px;
+  min-width: 140px;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: var(--radius);
+  text-align: right;
+}
+
+.portal-health strong {
+  font-size: 28px;
+}
+
+.portal-tabs {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.portal-tabs button {
+  min-height: 36px;
+  padding: 8px 11px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--ink);
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.portal-tabs button.active,
+.portal-tabs button:hover {
+  background: var(--brand);
+  border-color: var(--brand);
+  color: #fff;
+}
+
+.portal-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.portal-metric {
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+
+.portal-metric span {
+  display: block;
+  color: var(--muted);
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+
+.portal-metric strong {
+  font-size: 22px;
+}
+
+.qa-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.qa {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.danger-note {
+  border-left-color: var(--danger);
+  background: #fee4d5;
+  color: #8a3418;
+}
+
 .empty {
   padding: 28px 16px;
   text-align: center;
@@ -630,6 +804,8 @@ textarea:focus {
   }
 
   .layout-two,
+  .login-choice-grid,
+  .portal-grid,
   .task-grid,
   .stats-grid {
     grid-template-columns: 1fr;
@@ -640,9 +816,14 @@ textarea:focus {
   }
 
   .topbar,
-  .section-head {
+  .section-head,
+  .portal-hero {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .portal-health {
+    text-align: left;
   }
 }
 
@@ -656,6 +837,10 @@ textarea:focus {
   }
 
   .form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .qa-grid {
     grid-template-columns: 1fr;
   }
 }

@@ -417,7 +417,7 @@ function lockScreen() {
           <input id="password" name="password" type="password" autocomplete="current-password" required />
         </div>
         <button class="btn" type="submit">Sign In</button>
-        <p class="secure-note space-top">Client records are stored server-side in Postgres. Configure admin credentials and database environment variables in Vercel before using this with real clients.</p>
+        <p class="secure-note space-top">Client records are stored server-side. Production admin login and secure storage are configured in Vercel.</p>
       </form>
       ${toast()}
     </section>
@@ -1431,7 +1431,7 @@ function settingsView() {
     </div>
     <section class="panel">
       <div class="panel-body">
-        <p class="secure-note">CRM records are saved in Postgres. Exports are plain JSON for portability, so store downloaded backups carefully.</p>
+        <p class="secure-note">CRM records are saved server-side. Exports are plain JSON for portability, so store downloaded backups carefully.</p>
         <div class="section-actions settings-actions">
           <button class="btn" data-action="export">Export JSON Backup</button>
           <label class="btn secondary">Import Backup<input data-action="import" type="file" accept="application/json" hidden /></label>

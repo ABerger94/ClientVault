@@ -23,6 +23,7 @@ export function blankData() {
     questionnaires: [],
     meetings: [],
     notes: [],
+    portalUpdateIds: [],
     audit: [],
   };
 }

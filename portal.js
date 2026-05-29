@@ -180,10 +180,13 @@ function portalShell() {
   return `
     <section class="portal-public">
       <header class="portal-hero public-portal-hero">
-        <div>
-          <div class="eyebrow">Client workspace</div>
-          <h1>${escapeHtml(client.company || client.name)}</h1>
-          <p>${escapeHtml(client.nextStep || "Project status, onboarding, meetings, and shared deliverables.")}</p>
+        <div class="brand-row">
+          ${brandMark()}
+          <div>
+            <div class="eyebrow">Client workspace</div>
+            <h1>${escapeHtml(client.company || client.name)}</h1>
+            <p>${escapeHtml(client.nextStep || "Project status, onboarding, meetings, and shared deliverables.")}</p>
+          </div>
         </div>
         <button class="btn secondary" data-logout>Sign Out</button>
       </header>

@@ -295,11 +295,6 @@ textarea:focus {
   margin-bottom: 0;
 }
 
-.sidebar .brand-mark {
-  background: #f3c969;
-  color: #101820;
-}
-
 .nav {
   display: grid;
   gap: 4px;
@@ -653,6 +648,11 @@ textarea:focus {
 .portal-hero p,
 .portal-hero .muted {
   color: #dbe5ee;
+}
+
+.portal-hero .brand-row {
+  align-items: flex-start;
+  margin-bottom: 0;
 }
 
 .portal-health {

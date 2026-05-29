@@ -861,10 +861,13 @@ function portalView() {
     </div>
     <section class="portal-shell">
       <header class="portal-hero">
-        <div>
-          <div class="eyebrow">Client workspace</div>
-          <h2>${escapeHtml(client.company || client.name)}</h2>
-          <p>${escapeHtml(client.nextStep || "Track project progress, meetings, and onboarding from one place.")}</p>
+        <div class="brand-row">
+          ${brandMark()}
+          <div>
+            <div class="eyebrow">Client workspace</div>
+            <h2>${escapeHtml(client.company || client.name)}</h2>
+            <p>${escapeHtml(client.nextStep || "Track project progress, meetings, and onboarding from one place.")}</p>
+          </div>
         </div>
         <div class="portal-health">
           <span class="muted">Account health</span>

@@ -12,7 +12,13 @@ export function json(res, status, body) {
 export async function readBody(req) {
   const chunks = [];
   for await (const chunk of req) chunks.push(chunk);
-  return JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
+  } catch {
+    const error = new Error("Invalid JSON request body");
+    error.statusCode = 400;
+    throw error;
+  }
 }
 
 function sessionSecret() {

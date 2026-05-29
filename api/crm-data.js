@@ -16,6 +16,6 @@ export default async function handler(req, res) {
     }
     return json(res, 405, { error: "Method not allowed" });
   } catch (error) {
-    return json(res, 500, { error: error.message || "CRM data request failed" });
+    return json(res, error.statusCode || 500, { error: error.message || "CRM data request failed" });
   }
 }

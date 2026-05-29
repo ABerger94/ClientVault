@@ -9,7 +9,7 @@ export default async function handler(req, res) {
     if (!result.ok) {
       return json(res, result.reason === "not_configured" ? 503 : 401, {
         error: result.reason === "not_configured"
-          ? "Admin auth is not configured. Set CLIENTVAULT_ADMIN_EMAIL, CLIENTVAULT_ADMIN_PASSWORD, CLIENTVAULT_SESSION_SECRET, and POSTGRES_URL in Vercel."
+          ? "Admin auth is not configured. Set CLIENTVAULT_ADMIN_EMAIL, CLIENTVAULT_ADMIN_PASSWORD, CLIENTVAULT_SESSION_SECRET, and server-side storage in Vercel."
           : "Invalid email or password",
       });
     }
@@ -18,6 +18,6 @@ export default async function handler(req, res) {
     await appendAudit(String(email).trim().toLowerCase(), "Admin logged in");
     return json(res, 200, { data });
   } catch (error) {
-    return json(res, 500, { error: error.message || "Login failed" });
+    return json(res, error.statusCode || 500, { error: error.message || "Login failed" });
   }
 }

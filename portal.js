@@ -495,11 +495,11 @@ function filesView() {
       <article class="asset-card">
         ${assetPreview(asset)}
         <div>
-          <strong>${escapeHtml(asset.displayName || asset.name || "Untitled file")}</strong>
-          <div class="row-sub">${escapeHtml(asset.category || "File")} · ${formatBytes(asset.size)}</div>
+          <strong>${escapeHtml(assetTitle(asset))}</strong>
+          <div class="row-sub">${escapeHtml(assetLabel(asset))} · ${formatBytes(asset.size)}</div>
           ${asset.notes ? `<p class="row-sub">${escapeHtml(asset.notes)}</p>` : ""}
         </div>
-        ${asset.dataUrl ? `<button class="btn secondary" data-open-asset="${asset.id}">Open</button>` : ""}
+        ${assetOpenable(asset) ? `<button class="btn secondary" data-open-asset="${asset.id}">Open</button>` : ""}
       </article>
     `).join("")}
     ${projects.map((project) => `
@@ -515,11 +515,28 @@ function filesView() {
 }
 
 function assetPreview(asset) {
-  if (asset.type?.startsWith("image/") && asset.dataUrl) {
-    return `<img class="asset-thumb" src="${escapeHtml(asset.dataUrl)}" alt="" />`;
+  const source = assetPreviewUrl(asset);
+  if (asset.type?.startsWith("image/") && source) {
+    return `<img class="asset-thumb" src="${escapeHtml(source)}" alt="" />`;
   }
   const label = (asset.name || "file").split(".").pop()?.slice(0, 4).toUpperCase() || "FILE";
   return `<div class="asset-thumb file-thumb">${escapeHtml(label)}</div>`;
+}
+
+function assetTitle(asset) {
+  return asset.displayName || asset.name || asset.originalName || "Untitled file";
+}
+
+function assetLabel(asset) {
+  return asset.assetLabel || asset.category || "File";
+}
+
+function assetOpenable(asset) {
+  return Boolean(asset.url || asset.downloadUrl || asset.dataUrl);
+}
+
+function assetPreviewUrl(asset) {
+  return asset.url || asset.downloadUrl || asset.dataUrl || "";
 }
 
 function formatBytes(bytes) {
@@ -532,13 +549,14 @@ function formatBytes(bytes) {
 
 function openAssetFile(assetId) {
   const asset = (portalState.portal.assets || []).find((item) => item.id === assetId);
-  if (!asset?.dataUrl) {
+  if (!assetOpenable(asset)) {
     portalState.error = "This file is not available.";
     renderPortal();
     return;
   }
   try {
-    const url = createAssetObjectUrl(asset);
+    const url = asset.url || asset.downloadUrl || createAssetObjectUrl(asset);
+    const shouldRevoke = !asset.url && !asset.downloadUrl;
     const opened = window.open(url, "_blank");
     if (opened) {
       opened.opener = null;
@@ -552,7 +570,7 @@ function openAssetFile(assetId) {
       link.click();
       link.remove();
     }
-    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    if (shouldRevoke) setTimeout(() => URL.revokeObjectURL(url), 60000);
   } catch (error) {
     portalState.error = error.message || "Could not open this file.";
     renderPortal();

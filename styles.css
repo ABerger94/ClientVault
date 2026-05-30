@@ -429,6 +429,64 @@ textarea:focus {
   background: #fbfcfd;
 }
 
+.client-profile-summary {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 10px;
+}
+
+.profile-block {
+  display: grid;
+  gap: 7px;
+  padding: 10px 0 0;
+  border-top: 1px solid var(--line);
+}
+
+.profile-block-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.profile-color-list,
+.profile-asset-list {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.profile-color {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.profile-asset {
+  display: grid;
+  grid-template-columns: 38px minmax(120px, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  min-width: min(100%, 320px);
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.profile-asset .asset-thumb {
+  width: 38px;
+  height: 38px;
+  font-size: 10px;
+}
+
 .row-title {
   font-weight: 800;
 }
@@ -622,6 +680,17 @@ textarea:focus {
   font-size: 12px;
   font-weight: 800;
   text-transform: uppercase;
+}
+
+.brand-extra-list {
+  display: grid;
+  gap: 10px;
+}
+
+.brand-extra-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.45fr) minmax(0, 1fr);
+  gap: 12px;
 }
 
 .roadmap {
@@ -934,6 +1003,14 @@ textarea:focus {
     grid-template-columns: 1fr;
   }
 
+  .profile-asset {
+    grid-template-columns: 38px minmax(0, 1fr);
+  }
+
+  .profile-asset .btn {
+    grid-column: 1 / -1;
+  }
+
   .asset-card,
   .brand-card {
     grid-template-columns: 1fr;
@@ -965,6 +1042,10 @@ textarea:focus {
   }
 
   .form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .brand-extra-row {
     grid-template-columns: 1fr;
   }
 

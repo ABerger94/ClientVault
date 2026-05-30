@@ -183,9 +183,10 @@ function visibleClients() {
       .join(" ");
     const assets = state.data.clientAssets
       .filter((asset) => asset.clientId === client.id)
-      .map((asset) => `${asset.name} ${asset.category} ${asset.notes}`)
+      .map((asset) => `${assetTitle(asset)} ${assetLabel(asset)} ${asset.notes}`)
       .join(" ");
-    return `${client.name} ${client.company} ${client.email} ${client.phone} ${client.segment} ${client.tags} ${contacts} ${projects} ${assets}`
+    const brandLabels = brandColorEntries(client).map((entry) => `${entry.label} ${entry.color}`).join(" ");
+    return `${client.name} ${client.company} ${client.email} ${client.phone} ${client.segment} ${client.tags} ${contacts} ${projects} ${assets} ${brandLabels}`
       .toLowerCase()
       .includes(query);
   });
@@ -542,6 +543,9 @@ function bindShell() {
   app.querySelectorAll("[data-open-asset]").forEach((button) => {
     button.addEventListener("click", () => openAssetFile(button.dataset.openAsset));
   });
+  app.querySelectorAll("[data-add-brand-color]").forEach((button) => {
+    button.addEventListener("click", () => addBrandColorField(button));
+  });
   app.querySelectorAll("[data-close]").forEach((button) => {
     button.addEventListener("click", () => {
       state.drawer = null;
@@ -664,6 +668,7 @@ function clientRows(clients) {
   return clients
     .map((client) => {
       const contacts = state.data.contacts.filter((contact) => contact.clientId === client.id);
+      const assets = clientAssets(client.id);
       return `
         <article class="row">
           <div>
@@ -688,7 +693,11 @@ function clientRows(clients) {
           <button class="btn secondary" data-portal-client="${client.id}">Portal</button>
           <button class="btn secondary" data-open="portalAccess" data-client="${client.id}">Publish</button>
         </div>
-          <div class="span-2 row-sub">${clientBrandSwatches(client)}${contacts.map((contact) => escapeHtml(`${contact.name} <${contact.email}>`)).join(" · ")}</div>
+          <div class="client-profile-summary">
+            ${clientProfileBrandBlock(client)}
+            ${contacts.length ? `<div class="row-sub">${contacts.map((contact) => escapeHtml(`${contact.name} <${contact.email}>`)).join(" · ")}</div>` : ""}
+            ${clientProfileAssetsBlock(client, assets)}
+          </div>
         </article>
       `;
     })
@@ -696,9 +705,51 @@ function clientRows(clients) {
 }
 
 function clientBrandSwatches(client) {
-  const colors = [client.brandPrimary, client.brandSecondary, client.brandAccent, client.brandNeutral].filter(Boolean);
+  const colors = brandColorEntries(client).map((entry) => entry.color);
   if (!colors.length) return "";
   return `<span class="swatch-strip">${colors.map((color) => `<span class="color-swatch" style="background:${colorValue(color, "#ffffff")}"></span>`).join("")}</span>`;
+}
+
+function clientProfileBrandBlock(client) {
+  const colors = brandColorEntries(client);
+  if (!colors.length) return "";
+  return `
+    <div class="profile-block">
+      <div class="row-sub">Brand colors</div>
+      <div class="profile-color-list">
+        ${colors.map((entry) => `
+          <span class="profile-color">
+            <span class="color-swatch" style="background:${colorValue(entry.color, "#ffffff")}"></span>
+            ${escapeHtml(entry.label)}
+          </span>
+        `).join("")}
+      </div>
+    </div>
+  `;
+}
+
+function clientProfileAssetsBlock(client, assets = clientAssets(client.id)) {
+  if (!assets.length) return "";
+  return `
+    <div class="profile-block">
+      <div class="profile-block-head">
+        <div class="row-sub">Assets</div>
+        <button class="btn secondary mini-btn" data-open="clientAsset" data-client="${client.id}">Add Asset</button>
+      </div>
+      <div class="profile-asset-list">
+        ${assets.map((asset) => `
+          <article class="profile-asset">
+            ${assetPreview(asset)}
+            <div>
+              <strong>${escapeHtml(assetTitle(asset))}</strong>
+              <div class="row-sub">${escapeHtml(assetLabel(asset))} · ${formatBytes(asset.size)}</div>
+            </div>
+            ${assetOpenable(asset) ? `<button class="btn secondary mini-btn" data-open-asset="${asset.id}">Open</button>` : ""}
+          </article>
+        `).join("")}
+      </div>
+    </div>
+  `;
 }
 
 function contactsView() {
@@ -1127,12 +1178,12 @@ function assetCards(assets) {
       <article class="asset-card">
         ${assetPreview(asset)}
         <div>
-          <div class="row-title">${escapeHtml(asset.name || "Untitled file")}</div>
-          <div class="row-sub">${escapeHtml(client?.name || "No client")} · ${escapeHtml(asset.category || "File")} · ${formatBytes(asset.size)}</div>
+          <div class="row-title">${escapeHtml(assetTitle(asset))}</div>
+          <div class="row-sub">${escapeHtml(client?.name || "No client")} · ${escapeHtml(assetLabel(asset))} · ${formatBytes(asset.size)}</div>
           ${asset.notes ? `<p>${escapeHtml(asset.notes)}</p>` : ""}
         </div>
         <div class="inline-actions">
-          ${asset.dataUrl ? `<button class="btn secondary" data-open-asset="${asset.id}">Open</button>` : ""}
+          ${assetOpenable(asset) ? `<button class="btn secondary" data-open-asset="${asset.id}">Open</button>` : ""}
           <button class="btn secondary" data-edit="clientAsset" data-id="${asset.id}" data-client="${asset.clientId}">Edit</button>
           <button class="btn secondary" data-delete="clientAsset" data-id="${asset.id}">Delete</button>
         </div>
@@ -1142,11 +1193,28 @@ function assetCards(assets) {
 }
 
 function assetPreview(asset) {
-  if (asset.type?.startsWith("image/") && asset.dataUrl) {
-    return `<img class="asset-thumb" src="${escapeHtml(asset.dataUrl)}" alt="" />`;
+  const source = assetPreviewUrl(asset);
+  if (asset.type?.startsWith("image/") && source) {
+    return `<img class="asset-thumb" src="${escapeHtml(source)}" alt="" />`;
   }
   const label = (asset.name || "file").split(".").pop()?.slice(0, 4).toUpperCase() || "FILE";
   return `<div class="asset-thumb file-thumb">${escapeHtml(label)}</div>`;
+}
+
+function assetTitle(asset) {
+  return asset.displayName || asset.name || asset.originalName || "Untitled file";
+}
+
+function assetLabel(asset) {
+  return asset.assetLabel || asset.category || "File";
+}
+
+function assetOpenable(asset) {
+  return Boolean(asset.url || asset.downloadUrl || asset.dataUrl);
+}
+
+function assetPreviewUrl(asset) {
+  return asset.url || asset.downloadUrl || asset.dataUrl || "";
 }
 
 function brandPaletteCards(clients) {
@@ -1159,14 +1227,22 @@ function brandPaletteCards(clients) {
         <div class="row-sub">${escapeHtml(client.company || "No company")}</div>
       </div>
       <div class="palette-grid">
-        ${brandColor("Primary", client.brandPrimary)}
-        ${brandColor("Secondary", client.brandSecondary)}
-        ${brandColor("Accent", client.brandAccent)}
-        ${brandColor("Neutral", client.brandNeutral)}
+        ${brandColorEntries(client).map((entry) => brandColor(entry.label, entry.color)).join("")}
       </div>
       <button class="btn secondary" data-edit="client" data-id="${client.id}">Edit Colors</button>
     </article>
   `).join("");
+}
+
+function brandColorEntries(client) {
+  const fixedColors = [
+    { label: client.brandPrimaryLabel || "Primary", color: client.brandPrimary },
+    { label: client.brandSecondaryLabel || "Secondary", color: client.brandSecondary },
+    { label: client.brandAccentLabel || "Accent", color: client.brandAccent },
+    { label: client.brandNeutralLabel || "Neutral", color: client.brandNeutral },
+  ];
+  const customColors = Array.isArray(client.brandColors) ? client.brandColors : [];
+  return fixedColors.concat(customColors).filter((entry) => colorValue(entry.color));
 }
 
 function brandColor(label, color) {
@@ -1185,12 +1261,13 @@ function formatBytes(bytes) {
 
 function openAssetFile(assetId) {
   const asset = state.data.clientAssets.find((item) => item.id === assetId);
-  if (!asset?.dataUrl) {
+  if (!assetOpenable(asset)) {
     showToast("This asset does not have a file attached.");
     return;
   }
   try {
-    const url = createAssetObjectUrl(asset);
+    const url = asset.url || asset.downloadUrl || createAssetObjectUrl(asset);
+    const shouldRevoke = !asset.url && !asset.downloadUrl;
     const opened = window.open(url, "_blank");
     if (opened) {
       opened.opener = null;
@@ -1204,7 +1281,7 @@ function openAssetFile(assetId) {
       link.click();
       link.remove();
     }
-    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    if (shouldRevoke) setTimeout(() => URL.revokeObjectURL(url), 60000);
   } catch (error) {
     showToast(error.message || "Could not open this asset.");
   }
@@ -1220,6 +1297,15 @@ function createAssetObjectUrl(asset) {
     bytes[index] = binary.charCodeAt(index);
   }
   return URL.createObjectURL(new Blob([bytes], { type: mime }));
+}
+
+function addBrandColorField(button) {
+  const form = button.closest("form");
+  const list = form?.querySelector("[data-brand-extra-list]");
+  if (!list) return;
+  const wrapper = document.createElement("div");
+  wrapper.innerHTML = brandExtraColorField({ label: "Brand color", color: "#116466" }).trim();
+  list.append(wrapper.firstElementChild);
 }
 
 function onboardingView() {
@@ -1700,12 +1786,35 @@ function clientForm() {
       ${input("tags", "Tags", client.tags, false, "text", "span-2")}
       <div class="span-2 form-section-title">Brand colors</div>
       ${input("brandPrimary", "Primary color", client.brandPrimary || "#116466", false, "color")}
+      ${input("brandPrimaryLabel", "Primary label", client.brandPrimaryLabel || "Primary")}
       ${input("brandSecondary", "Secondary color", client.brandSecondary || "#101820", false, "color")}
+      ${input("brandSecondaryLabel", "Secondary label", client.brandSecondaryLabel || "Secondary")}
       ${input("brandAccent", "Accent color", client.brandAccent || "#a54f2a", false, "color")}
+      ${input("brandAccentLabel", "Accent label", client.brandAccentLabel || "Accent")}
       ${input("brandNeutral", "Neutral color", client.brandNeutral || "#f5f7f9", false, "color")}
+      ${input("brandNeutralLabel", "Neutral label", client.brandNeutralLabel || "Neutral")}
+      <div class="span-2 form-section-title">Additional brand colors</div>
+      <div class="span-2 brand-extra-list" data-brand-extra-list>
+        ${brandExtraColorFields(client.brandColors)}
+      </div>
+      <button class="btn secondary span-2" type="button" data-add-brand-color>Add Color</button>
       ${textarea("nextStep", "Next step", client.nextStep, "span-2")}
       <button class="btn span-2" type="submit">Save Client</button>
     </form>
+  `;
+}
+
+function brandExtraColorFields(colors = []) {
+  const entries = Array.isArray(colors) ? colors : [];
+  return entries.map((entry) => brandExtraColorField(entry)).join("");
+}
+
+function brandExtraColorField(entry = {}) {
+  return `
+    <div class="brand-extra-row">
+      ${input("brandExtraColor", "Color", colorValue(entry.color, "#116466"), false, "color")}
+      ${input("brandExtraLabel", "Label", entry.label || "")}
+    </div>
   `;
 }
 
@@ -1715,6 +1824,7 @@ function clientAssetForm() {
     <form data-form="clientAsset" class="form-grid">
       ${select("clientId", "Client", state.data.clients.map((c) => [c.id, c.name]), asset.clientId)}
       ${select("category", "Category", ["Logo", "Brand Guide", "Palette", "Image", "Copy", "Contract", "Deliverable", "Reference", "Other"], asset.category || "Reference")}
+      ${input("assetLabel", "Asset label", asset.assetLabel || asset.category || "Reference")}
       <div class="field span-2">
         <label>File${asset.id ? " replacement" : ""}</label>
         <input name="assetFiles" type="file" ${asset.id ? "" : "required"} ${asset.id ? "" : "multiple"} />
@@ -1936,7 +2046,12 @@ async function submitForm(event) {
     await submitClientAsset(form);
     return;
   }
-  const values = Object.fromEntries(new FormData(form).entries());
+  const formData = new FormData(form);
+  const values = Object.fromEntries(formData.entries());
+  if (type === "client") {
+    values.brandExtraColors = formData.getAll("brandExtraColor");
+    values.brandExtraLabels = formData.getAll("brandExtraLabel");
+  }
   if (type === "portalSecret") {
     savePortalAdminSecret(event);
     return;
@@ -1989,6 +2104,16 @@ function normalizeRecord(type, values, existing = {}) {
     base.brandSecondary = colorValue(base.brandSecondary);
     base.brandAccent = colorValue(base.brandAccent);
     base.brandNeutral = colorValue(base.brandNeutral);
+    base.brandPrimaryLabel = base.brandPrimaryLabel || "Primary";
+    base.brandSecondaryLabel = base.brandSecondaryLabel || "Secondary";
+    base.brandAccentLabel = base.brandAccentLabel || "Accent";
+    base.brandNeutralLabel = base.brandNeutralLabel || "Neutral";
+    base.brandColors = (values.brandExtraColors || [])
+      .map((color, index) => ({
+        color: colorValue(color),
+        label: String(values.brandExtraLabels?.[index] || "").trim() || "Brand color",
+      }))
+      .filter((entry) => entry.color);
   }
   if (type === "deal") {
     base.value = Number(base.value || 0);
@@ -2032,55 +2157,81 @@ async function submitClientAsset(form) {
     showToast("Choose at least one file to upload.");
     return;
   }
-  if (files.some((file) => file.size > 10 * 1024 * 1024)) {
-    showToast("Each asset must be 10 MB or smaller.");
+  if (files.some((file) => file.size > 15 * 1024 * 1024)) {
+    showToast("Each asset must be 15 MB or smaller.");
     return;
   }
-  if (existing) {
-    Object.assign(existing, {
-      clientId: values.clientId,
-      category: values.category,
-      displayName: values.displayName,
-      notes: values.notes,
-      updatedAt: new Date().toISOString(),
+  try {
+    if (existing) {
+      Object.assign(existing, {
+        clientId: values.clientId,
+        category: values.category,
+        assetLabel: values.assetLabel || values.category || "Reference",
+        displayName: values.displayName,
+        notes: values.notes,
+        updatedAt: new Date().toISOString(),
+      });
+      if (files[0]) Object.assign(existing, await fileRecord(files[0], values, existing.id));
+      state.drawer = null;
+      await saveData("Updated client asset");
+      showToast("Asset saved.");
+      render();
+      return;
+    }
+    const records = await Promise.all(files.map((file) => fileRecord(file, values)));
+    state.data.clientAssets.push(...records);
+    const uniqueClientIds = new Set(records.map((asset) => asset.clientId));
+    uniqueClientIds.forEach((clientId) => {
+      const checklist = ensureOnboarding(clientId);
+      checklist.brandAssetsCollected = true;
     });
-    if (files[0]) Object.assign(existing, await fileRecord(files[0], values, existing.id));
     state.drawer = null;
-    await saveData("Updated client asset");
-    showToast("Asset saved.");
+    await saveData(`Uploaded ${records.length} client asset${records.length === 1 ? "" : "s"}`);
+    showToast(`${records.length} asset${records.length === 1 ? "" : "s"} uploaded.`);
     render();
-    return;
+  } catch (error) {
+    showToast(error.message || "Asset upload failed.");
   }
-  const records = await Promise.all(files.map((file) => fileRecord(file, values)));
-  state.data.clientAssets.push(...records);
-  const uniqueClientIds = new Set(records.map((asset) => asset.clientId));
-  uniqueClientIds.forEach((clientId) => {
-    const checklist = ensureOnboarding(clientId);
-    checklist.brandAssetsCollected = true;
-  });
-  state.drawer = null;
-  await saveData(`Uploaded ${records.length} client asset${records.length === 1 ? "" : "s"}`);
-  showToast(`${records.length} asset${records.length === 1 ? "" : "s"} uploaded.`);
-  render();
 }
 
-function fileRecord(file, values, existingId = "") {
+async function fileRecord(file, values, existingId = "") {
+  const dataUrl = await fileDataUrl(file);
+  const response = await fetch("/api/client-asset-upload", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify({
+      clientId: values.clientId,
+      filename: file.name,
+      contentType: file.type || "application/octet-stream",
+      dataUrl,
+    }),
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.error || `Could not upload ${file.name}`);
+  return {
+    id: existingId || id(),
+    clientId: values.clientId,
+    category: values.category || "Reference",
+    assetLabel: values.assetLabel || values.category || "Reference",
+    name: values.displayName || file.name,
+    displayName: values.displayName || file.name,
+    originalName: file.name,
+    type: result.contentType || file.type || "application/octet-stream",
+    size: result.size || file.size,
+    url: result.url,
+    downloadUrl: result.downloadUrl || result.url,
+    pathname: result.pathname,
+    notes: values.notes || "",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function fileDataUrl(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.addEventListener("load", () => resolve({
-      id: existingId || id(),
-      clientId: values.clientId,
-      category: values.category || "Reference",
-      name: values.displayName || file.name,
-      displayName: values.displayName || file.name,
-      originalName: file.name,
-      type: file.type || "application/octet-stream",
-      size: file.size,
-      dataUrl: reader.result,
-      notes: values.notes || "",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    }));
+    reader.addEventListener("load", () => resolve(reader.result));
     reader.addEventListener("error", () => reject(new Error(`Could not read ${file.name}`)));
     reader.readAsDataURL(file);
   });
@@ -2264,6 +2415,11 @@ function buildPortalSnapshot(clientId) {
       brandSecondary: client.brandSecondary,
       brandAccent: client.brandAccent,
       brandNeutral: client.brandNeutral,
+      brandPrimaryLabel: client.brandPrimaryLabel,
+      brandSecondaryLabel: client.brandSecondaryLabel,
+      brandAccentLabel: client.brandAccentLabel,
+      brandNeutralLabel: client.brandNeutralLabel,
+      brandColors: client.brandColors || [],
     },
     contacts: state.data.contacts.filter((item) => item.clientId === clientId),
     projects: clientProjects(clientId),

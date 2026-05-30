@@ -76,7 +76,10 @@ function renderPortal() {
     });
   }
   portalApp.querySelectorAll("form[data-action-form]").forEach((form) => {
-    form.addEventListener("submit", submitPortalAction);
+    form.addEventListener("submit", form.dataset.actionForm === "asset_upload" ? submitPortalAssetUpload : submitPortalAction);
+  });
+  portalApp.querySelectorAll("[data-add-brand-color]").forEach((button) => {
+    button.addEventListener("click", () => addBrandColorField(button));
   });
   portalApp.querySelectorAll("[data-confirm-meeting]").forEach((button) => {
     button.addEventListener("click", () => submitPortalAction(null, {
@@ -159,7 +162,15 @@ async function submitPortalAction(event, directAction = null) {
   if (event) event.preventDefault();
   const form = event?.currentTarget;
   const type = directAction?.type || form.dataset.actionForm;
-  const payload = directAction?.payload || Object.fromEntries(new FormData(form).entries());
+  const formData = form ? new FormData(form) : null;
+  const payload = directAction?.payload || Object.fromEntries(formData.entries());
+  if (type === "brand_update" && formData) {
+    const labels = formData.getAll("brandExtraLabel");
+    payload.brandColors = formData.getAll("brandExtraColor").map((color, index) => ({
+      color,
+      label: labels[index] || "Brand color",
+    }));
+  }
   portalState.notice = "";
   portalState.error = "";
   try {
@@ -174,7 +185,11 @@ async function submitPortalAction(event, directAction = null) {
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || "Request failed.");
-    portalState.notice = "Sent. Your provider will see this after their next sync.";
+    portalState.notice = data.applied ? "Saved." : "Sent. Your provider will see this automatically.";
+    if (type === "brand_update") {
+      Object.assign(portalState.portal.client, payload);
+      sessionStorage.setItem("clientvault.portal", JSON.stringify(portalState.portal));
+    }
     if (form) form.reset();
   } catch (error) {
     portalState.error = error.message;
@@ -249,7 +264,50 @@ function homeView() {
       <section class="panel"><div class="panel-head"><h2>Project Snapshot</h2></div><div class="panel-body">${projectCards(portal.projects.slice(0, 3))}</div></section>
       <section class="panel"><div class="panel-head"><h2>Next Steps</h2></div><div class="panel-body">${nextSteps()}</div></section>
     </div>
+    <section class="panel space-top">
+      <div class="panel-head"><h2>Brand Profile</h2></div>
+      <div class="panel-body">${brandProfileForm()}</div>
+    </section>
   `;
+}
+
+function brandProfileForm() {
+  const client = portalState.portal.client;
+  return `
+    <form data-action-form="brand_update" class="form-grid">
+      ${brandColorRow("brandPrimary", "brandPrimaryLabel", client.brandPrimary || "#116466", client.brandPrimaryLabel || "Primary")}
+      ${brandColorRow("brandSecondary", "brandSecondaryLabel", client.brandSecondary || "#101820", client.brandSecondaryLabel || "Secondary")}
+      ${brandColorRow("brandAccent", "brandAccentLabel", client.brandAccent || "#a54f2a", client.brandAccentLabel || "Accent")}
+      ${brandColorRow("brandNeutral", "brandNeutralLabel", client.brandNeutral || "#f5f7f9", client.brandNeutralLabel || "Neutral")}
+      <div class="span-2 brand-extra-list" data-brand-extra-list>${brandExtraRows(client.brandColors || [])}</div>
+      <button class="btn secondary span-2" type="button" data-add-brand-color>Add Color</button>
+      <button class="btn span-2" type="submit">Send Brand Updates</button>
+    </form>
+  `;
+}
+
+function brandColorRow(colorName, labelName, color, label) {
+  return `<div class="brand-color-row span-2">${field(colorName, "Color", color, "color")}${field(labelName, "Label", label)}</div>`;
+}
+
+function brandExtraRows(colors) {
+  return colors.map((entry) => brandExtraRow(entry)).join("");
+}
+
+function brandExtraRow(entry = {}) {
+  return `<div class="brand-extra-row">${field("brandExtraColor", "Color", colorValue(entry.color, "#116466"), "color")}${field("brandExtraLabel", "Label", entry.label || "")}</div>`;
+}
+
+function addBrandColorField(button) {
+  const list = button.closest("form")?.querySelector("[data-brand-extra-list]");
+  if (!list) return;
+  const wrapper = document.createElement("div");
+  wrapper.innerHTML = brandExtraRow({ label: "Brand color", color: "#116466" }).trim();
+  list.append(wrapper.firstElementChild);
+}
+
+function field(name, label, value = "", type = "text") {
+  return `<div class="field"><label>${escapeHtml(label)}</label><input name="${name}" type="${type}" value="${escapeHtml(value)}" /></div>`;
 }
 
 function metric(label, value) {
@@ -489,8 +547,37 @@ function supportView() {
 function filesView() {
   const assets = portalState.portal.assets || [];
   const projects = portalState.portal.projects.filter((project) => project.deliverableUrl);
-  if (!projects.length && !assets.length) return `<div class="empty">No deliverables, shared links, or files yet.</div>`;
   return `
+    <section class="panel">
+      <div class="panel-head"><h2>Upload Asset</h2></div>
+      <div class="panel-body">
+        <form data-action-form="asset_upload" class="form-grid" novalidate>
+          <div class="field">
+            <label>Asset label</label>
+            <input name="assetLabel" value="Reference" />
+          </div>
+          <div class="field">
+            <label>Category</label>
+            <select name="category">
+              <option>Logo</option>
+              <option>Brand Guide</option>
+              <option>Palette</option>
+              <option>Image</option>
+              <option>Copy</option>
+              <option>Contract</option>
+              <option>Deliverable</option>
+              <option selected>Reference</option>
+              <option>Other</option>
+            </select>
+          </div>
+          <div class="field span-2"><label>File</label><input name="assetFile" type="file" /></div>
+          <div class="field span-2"><label>Display name</label><input name="displayName" /></div>
+          <div class="field span-2"><label>Notes</label><textarea name="notes"></textarea></div>
+          <button class="btn span-2" type="submit">Upload Asset</button>
+        </form>
+      </div>
+    </section>
+    ${!projects.length && !assets.length ? `<div class="empty">No deliverables, shared links, or files yet.</div>` : ""}
     ${assets.map((asset) => `
       <article class="asset-card">
         ${assetPreview(asset)}
@@ -512,6 +599,41 @@ function filesView() {
     </article>
   `).join("")}
   `;
+}
+
+async function submitPortalAssetUpload(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const file = form.querySelector("input[type='file']").files[0];
+  if (!file) {
+    portalState.error = "Choose a file to upload.";
+    renderPortal();
+    return;
+  }
+  if (file.size > 15 * 1024 * 1024) {
+    portalState.error = "File must be 15 MB or smaller.";
+    renderPortal();
+    return;
+  }
+  const formData = new FormData(form);
+  formData.set("email", portalState.auth.email);
+  formData.set("accessCode", portalState.auth.accessCode);
+  formData.set("file", file, file.name);
+  portalState.notice = "Uploading asset...";
+  portalState.error = "";
+  renderPortal();
+  try {
+    const response = await fetch("/api/portal-asset-upload", { method: "POST", body: formData });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || "Upload failed.");
+    portalState.portal.assets = [...(portalState.portal.assets || []), data.asset];
+    sessionStorage.setItem("clientvault.portal", JSON.stringify(portalState.portal));
+    portalState.notice = "Asset uploaded.";
+  } catch (error) {
+    portalState.error = error.message || "Upload failed.";
+  } finally {
+    renderPortal();
+  }
 }
 
 function assetPreview(asset) {

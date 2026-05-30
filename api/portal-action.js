@@ -1,4 +1,5 @@
 import { appendUpdate, authenticatePortalClient, json, readBody } from "./_portal-store.js";
+import { readCrmData, writeCrmData } from "./_db.js";
 
 const ALLOWED_TYPES = new Set([
   "meeting_request",
@@ -6,6 +7,7 @@ const ALLOWED_TYPES = new Set([
   "questionnaire_update",
   "support_request",
   "onboarding_step",
+  "brand_update",
 ]);
 
 const ALLOWED_STEPS = new Set([
@@ -68,6 +70,24 @@ function cleanPayload(type, payload = {}) {
     if (!ALLOWED_STEPS.has(payload.step)) throw new Error("Unsupported onboarding step.");
     return { step: payload.step, done: Boolean(payload.done) };
   }
+  if (type === "brand_update") {
+    return {
+      brandPrimary: text(payload.brandPrimary, 20),
+      brandPrimaryLabel: text(payload.brandPrimaryLabel, 80) || "Primary",
+      brandSecondary: text(payload.brandSecondary, 20),
+      brandSecondaryLabel: text(payload.brandSecondaryLabel, 80) || "Secondary",
+      brandAccent: text(payload.brandAccent, 20),
+      brandAccentLabel: text(payload.brandAccentLabel, 80) || "Accent",
+      brandNeutral: text(payload.brandNeutral, 20),
+      brandNeutralLabel: text(payload.brandNeutralLabel, 80) || "Neutral",
+      brandColors: Array.isArray(payload.brandColors)
+        ? payload.brandColors.slice(0, 12).map((entry) => ({
+            color: text(entry.color, 20),
+            label: text(entry.label, 80) || "Brand color",
+          }))
+        : [],
+    };
+  }
   return {};
 }
 
@@ -83,6 +103,15 @@ export default async function handler(req, res) {
     if (!ALLOWED_TYPES.has(type)) return json(res, 400, { error: "Unsupported portal action." });
     const safePayload = cleanPayload(type, payload);
 
+    if (type === "brand_update") {
+      const data = await readCrmData();
+      const client = data.clients.find((item) => item.id === record.portalId);
+      if (!client) return json(res, 404, { error: "Client profile not found." });
+      Object.assign(client, normalizeBrandUpdate(safePayload));
+      await writeCrmData(data, record.email, `Client updated brand colors for ${record.clientName}`);
+      return json(res, 200, { ok: true, applied: true });
+    }
+
     await appendUpdate({
       portalId: record.portalId,
       clientName: record.clientName,
@@ -96,4 +125,26 @@ export default async function handler(req, res) {
   } catch (error) {
     return json(res, 400, { error: error.message || "Portal action failed." });
   }
+}
+
+function validColor(value) {
+  const color = String(value || "").trim();
+  return /^#[0-9a-f]{6}$/i.test(color) ? color : "";
+}
+
+function normalizeBrandUpdate(payload) {
+  return {
+    brandPrimary: validColor(payload.brandPrimary),
+    brandPrimaryLabel: payload.brandPrimaryLabel || "Primary",
+    brandSecondary: validColor(payload.brandSecondary),
+    brandSecondaryLabel: payload.brandSecondaryLabel || "Secondary",
+    brandAccent: validColor(payload.brandAccent),
+    brandAccentLabel: payload.brandAccentLabel || "Accent",
+    brandNeutral: validColor(payload.brandNeutral),
+    brandNeutralLabel: payload.brandNeutralLabel || "Neutral",
+    brandColors: payload.brandColors.map((entry) => ({
+      color: validColor(entry.color),
+      label: entry.label || "Brand color",
+    })).filter((entry) => entry.color),
+  };
 }

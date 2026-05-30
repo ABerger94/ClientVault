@@ -68,6 +68,7 @@ const state = {
   drawer: null,
   toast: "",
   timer: null,
+  refreshTimer: null,
   syncing: false,
 };
 
@@ -262,6 +263,7 @@ async function initialize() {
       state.unlocked = true;
       state.entry = "admin";
       scheduleAutoLock();
+      scheduleDataRefresh();
       await autoSyncPortalUpdates();
     }
   } catch {
@@ -312,6 +314,7 @@ async function unlock(event) {
     state.entry = "admin";
     showToast("Signed in.");
     scheduleAutoLock();
+    scheduleDataRefresh();
     render();
     await autoSyncPortalUpdates();
   } catch (error) {
@@ -329,6 +332,7 @@ async function lock() {
   state.drawer = null;
   state.sessionEmail = "";
   clearTimeout(state.timer);
+  clearInterval(state.refreshTimer);
   render();
 }
 
@@ -350,6 +354,22 @@ function showToast(message) {
       render();
     }
   }, 3200);
+}
+
+function scheduleDataRefresh() {
+  clearInterval(state.refreshTimer);
+  state.refreshTimer = setInterval(refreshCrmData, 45000);
+}
+
+async function refreshCrmData() {
+  if (!state.unlocked || state.drawer) return;
+  try {
+    const response = await fetch("/api/crm-data", { credentials: "same-origin" });
+    if (!response.ok) return;
+    const payload = await response.json();
+    state.data = hydrateData(payload.data);
+    render();
+  } catch {}
 }
 
 function render() {
@@ -2390,11 +2410,64 @@ function applyPortalUpdates(updates) {
         clearIds.push(update.id);
       }
     }
+    if (update.type === "client_asset_upload") {
+      state.data.clientAssets.push(normalizeAssetUpdate(clientId, update.payload));
+      const checklist = ensureOnboarding(clientId);
+      checklist.brandAssetsCollected = true;
+      applied.push(update.id);
+      clearIds.push(update.id);
+    }
+    if (update.type === "brand_update") {
+      const client = getClient(clientId);
+      Object.assign(client, normalizeBrandUpdate(update.payload));
+      applied.push(update.id);
+      clearIds.push(update.id);
+    }
   });
   if (applied.length) {
     state.data.portalUpdateIds = [...new Set([...(state.data.portalUpdateIds || []), ...applied])].slice(-500);
   }
   return { appliedIds: applied, clearIds };
+}
+
+function normalizeAssetUpdate(clientId, payload = {}) {
+  return {
+    id: payload.id || id(),
+    clientId,
+    category: payload.category || "Reference",
+    assetLabel: payload.assetLabel || payload.category || "Reference",
+    name: payload.name || payload.originalName || "Client upload",
+    displayName: payload.displayName || payload.name || payload.originalName || "Client upload",
+    originalName: payload.originalName || payload.name || "",
+    type: payload.type || "application/octet-stream",
+    size: Number(payload.size || 0),
+    url: payload.url || "",
+    downloadUrl: payload.downloadUrl || payload.url || "",
+    pathname: payload.pathname || "",
+    notes: payload.notes || "",
+    uploadedBy: "Client",
+    createdAt: payload.createdAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function normalizeBrandUpdate(payload = {}) {
+  return {
+    brandPrimary: colorValue(payload.brandPrimary),
+    brandPrimaryLabel: payload.brandPrimaryLabel || "Primary",
+    brandSecondary: colorValue(payload.brandSecondary),
+    brandSecondaryLabel: payload.brandSecondaryLabel || "Secondary",
+    brandAccent: colorValue(payload.brandAccent),
+    brandAccentLabel: payload.brandAccentLabel || "Accent",
+    brandNeutral: colorValue(payload.brandNeutral),
+    brandNeutralLabel: payload.brandNeutralLabel || "Neutral",
+    brandColors: Array.isArray(payload.brandColors)
+      ? payload.brandColors.map((entry) => ({
+          color: colorValue(entry.color),
+          label: entry.label || "Brand color",
+        })).filter((entry) => entry.color)
+      : [],
+  };
 }
 
 function buildPortalSnapshot(clientId) {

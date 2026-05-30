@@ -1,4 +1,5 @@
-import { appendUpdate, authenticatePortalClient, json, readBody } from "./_portal-store.js";
+import { randomUUID } from "node:crypto";
+import { authenticatePortalClient, json, readBody } from "./_portal-store.js";
 import { readCrmData, writeCrmData } from "./_db.js";
 
 const ALLOWED_TYPES = new Set([
@@ -103,27 +104,114 @@ export default async function handler(req, res) {
     if (!ALLOWED_TYPES.has(type)) return json(res, 400, { error: "Unsupported portal action." });
     const safePayload = cleanPayload(type, payload);
 
-    if (type === "brand_update") {
-      const data = await readCrmData();
-      const client = data.clients.find((item) => item.id === record.portalId);
-      if (!client) return json(res, 404, { error: "Client profile not found." });
-      Object.assign(client, normalizeBrandUpdate(safePayload));
-      await writeCrmData(data, record.email, `Client updated brand colors for ${record.clientName}`);
-      return json(res, 200, { ok: true, applied: true });
-    }
-
-    await appendUpdate({
-      portalId: record.portalId,
-      clientName: record.clientName,
-      email: record.email,
-      type,
-      payload: safePayload,
-      status: "pending",
-    });
-
-    return json(res, 200, { ok: true });
+    const data = await readCrmData();
+    const client = data.clients.find((item) => item.id === record.portalId);
+    if (!client) return json(res, 404, { error: "Client profile not found." });
+    applyPortalAction(data, client, type, safePayload);
+    await writeCrmData(data, record.email, `Client portal ${type.replaceAll("_", " ")} for ${record.clientName}`);
+    return json(res, 200, { ok: true, applied: true });
   } catch (error) {
     return json(res, 400, { error: error.message || "Portal action failed." });
+  }
+}
+
+function applyPortalAction(data, client, type, payload) {
+  if (type === "meeting_request") {
+    const meeting = normalizeRecord("meeting", {
+      clientId: client.id,
+      type: payload.meetingType || "Strategy Meeting",
+      title: `${payload.meetingType || "Strategy Meeting"} request`,
+      datetime: payload.datetime,
+      status: "Proposed",
+      proposedBy: "Client",
+      notes: payload.notes || "",
+    });
+    data.meetings.push(meeting);
+    syncWorkflowFlags(data, "meeting", meeting);
+    return;
+  }
+  if (type === "meeting_confirm") {
+    const meeting = data.meetings.find((item) => item.id === payload.meetingId || (
+      item.clientId === client.id && item.type === payload.meetingType && item.datetime === payload.datetime
+    ));
+    if (meeting) {
+      meeting.status = "Confirmed";
+      syncWorkflowFlags(data, "meeting", meeting);
+    }
+    return;
+  }
+  if (type === "questionnaire_update") {
+    const existing = data.questionnaires.find((item) => item.clientId === client.id);
+    const next = normalizeRecord("questionnaire", { clientId: client.id, ...payload }, existing || {});
+    if (existing) Object.assign(existing, next);
+    else data.questionnaires.push(next);
+    syncWorkflowFlags(data, "questionnaire", next);
+    return;
+  }
+  if (type === "support_request") {
+    data.tasks.push(normalizeRecord("task", {
+      clientId: client.id,
+      title: payload.title || "Client support request",
+      dueDate: payload.dueDate || new Date().toISOString().slice(0, 10),
+      priority: payload.priority || "Normal",
+      source: "client_portal_support",
+      category: "Support",
+    }));
+    return;
+  }
+  if (type === "onboarding_step") {
+    const checklist = ensureOnboarding(data, client.id);
+    checklist[payload.step] = Boolean(payload.done);
+    return;
+  }
+  if (type === "brand_update") {
+    Object.assign(client, normalizeBrandUpdate(payload));
+  }
+}
+
+function id() {
+  return randomUUID();
+}
+
+function normalizeRecord(type, values, existing = {}) {
+  const base = { ...existing, ...values };
+  if (!base.id) base.id = id();
+  if (type === "questionnaire") base.budgetRange = Number(base.budgetRange || 0);
+  if (type === "meeting") {
+    base.status ||= "Proposed";
+    base.proposedBy ||= "Client";
+  }
+  if (type === "task") base.done = Boolean(existing.done);
+  if (type === "task") base.createdAt ||= new Date().toISOString();
+  return base;
+}
+
+function ensureOnboarding(data, clientId) {
+  let checklist = data.onboarding.find((item) => item.clientId === clientId);
+  if (!checklist) {
+    checklist = normalizeRecord("onboarding", { clientId });
+    data.onboarding.push(checklist);
+  }
+  return checklist;
+}
+
+function syncWorkflowFlags(data, type, record) {
+  if (!record.clientId) return;
+  if (type === "questionnaire") ensureOnboarding(data, record.clientId).questionnaireCompleted = true;
+  if (type === "meeting") {
+    const checklist = ensureOnboarding(data, record.clientId);
+    if (record.type === "Welcome Call") {
+      checklist.welcomeCallScheduled = record.status !== "Canceled";
+      checklist.welcomeCallDate = record.datetime;
+      checklist.welcomeCallProposedBy = record.proposedBy || "Client";
+      checklist.welcomeCallConfirmed = record.status === "Confirmed" || record.status === "Completed";
+    }
+    if (record.type === "Strategy Meeting") {
+      checklist.strategyMeetingDate = record.datetime;
+      checklist.strategyMeetingProposedBy = record.proposedBy || "Client";
+      checklist.strategyMeetingConfirmed = record.status === "Confirmed" || record.status === "Completed";
+      checklist.strategyMeetingHeld = record.status === "Completed";
+    }
   }
 }
 

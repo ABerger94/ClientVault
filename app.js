@@ -476,6 +476,7 @@ function shell() {
           ${navButton("assets", "Assets")}
           ${navButton("schedule", "Schedule")}
           ${navButton("pipeline", "Pipeline")}
+          ${navButton("support", "Support Tickets")}
           ${navButton("tasks", "Tasks")}
           ${navButton("insights", "Insights")}
           ${navButton("portal", "Client Portal")}
@@ -535,6 +536,7 @@ function bindShell() {
         type: button.dataset.open,
         clientId: button.dataset.client || "",
         meetingType: button.dataset.meetingType || "",
+        source: button.dataset.source || "",
       };
       render();
     });
@@ -611,6 +613,7 @@ function view() {
   if (state.view === "assets") return assetsView();
   if (state.view === "schedule") return scheduleView();
   if (state.view === "pipeline") return pipelineView();
+  if (state.view === "support") return supportTicketsView();
   if (state.view === "tasks") return tasksView();
   if (state.view === "insights") return insightsView();
   if (state.view === "portal") return portalView();
@@ -1120,10 +1123,10 @@ function qa(label, value) {
 }
 
 function portalSupport(client) {
-  const clientTasks = state.data.tasks.filter((task) => task.clientId === client.id);
+  const clientTasks = supportTickets(client.id);
   return `
     <div class="section-actions settings-actions">
-      <button class="btn" data-open="task" data-client="${client.id}">New Support Request</button>
+      <button class="btn" data-open="task" data-client="${client.id}" data-source="client_portal_support">New Support Request</button>
     </div>
     ${taskCards(clientTasks)}
   `;
@@ -1636,6 +1639,44 @@ function tasksView() {
   `;
 }
 
+function supportTicketsView() {
+  const tickets = supportTickets();
+  const open = tickets.filter((task) => !task.done);
+  const done = tickets.filter((task) => task.done);
+  const highPriority = open.filter((task) => task.priority === "High").length;
+  return `
+    <div class="section-head">
+      <div>
+        <h1>Support Tickets</h1>
+        <p class="muted">Client portal support requests that sync into the admin workspace automatically.</p>
+      </div>
+      <button class="btn" data-open="task" data-source="client_portal_support">New Ticket</button>
+    </div>
+    <div class="stats-grid">
+      ${stat("Open tickets", open.length)}
+      ${stat("High priority", highPriority)}
+      ${stat("Completed", done.length)}
+    </div>
+    <div class="task-grid">
+      <section class="panel"><div class="panel-head"><h2>Open</h2></div><div class="panel-body">${taskCards(open)}</div></section>
+      <section class="panel"><div class="panel-head"><h2>Completed</h2></div><div class="panel-body">${taskCards(done)}</div></section>
+      <section class="panel"><div class="panel-head"><h2>Recent Activity</h2></div><div class="panel-body">${auditCards()}</div></section>
+    </div>
+  `;
+}
+
+function supportTickets(clientId = "") {
+  return state.data.tasks
+    .filter((task) => {
+      const isSupport = task.source === "client_portal_support" || task.category === "Support";
+      return isSupport && (!clientId || task.clientId === clientId);
+    })
+    .sort((a, b) => {
+      if (a.done !== b.done) return a.done ? 1 : -1;
+      return (a.dueDate || "9999-12-31").localeCompare(b.dueDate || "9999-12-31");
+    });
+}
+
 function dueTasks() {
   return state.data.tasks
     .filter((task) => !task.done)
@@ -1702,7 +1743,7 @@ function settingsView() {
     <div class="section-head">
       <div>
         <h1>Settings</h1>
-        <p class="muted">Backup, restore, sync, and account metadata.</p>
+        <p class="muted">Backup, restore, and account metadata.</p>
       </div>
     </div>
     <section class="panel">
@@ -1711,12 +1752,7 @@ function settingsView() {
         <div class="section-actions settings-actions">
           <button class="btn" data-action="export">Export JSON Backup</button>
           <label class="btn secondary">Import Backup<input data-action="import" type="file" accept="application/json" hidden /></label>
-          <button class="btn secondary" data-action="sync-portal">Sync Portal Updates</button>
         </div>
-        <form data-form="portalSecret" class="form-grid portal-secret-form">
-          ${input("adminSecret", "Portal admin secret for automatic sync", localStorage.getItem(PORTAL_ADMIN_SECRET_KEY) || "", true, "password", "span-2")}
-          <button class="btn span-2" type="submit">Save Sync Secret</button>
-        </form>
         <p><strong>Records:</strong> ${state.data.clients.length} clients, ${state.data.contacts.length} contacts, ${state.data.deals.length} deals, ${state.data.tasks.length} tasks, ${state.data.clientAssets.length} assets, ${state.data.notes.length} notes.</p>
         <p><strong>Signed in:</strong> ${escapeHtml(state.sessionEmail || "Admin")}</p>
         <p><strong>Last saved:</strong> ${escapeHtml(state.data.updatedAt || "Unknown")}</p>
@@ -2001,12 +2037,16 @@ function dealForm() {
 
 function taskForm() {
   const task = { clientId: state.drawer.clientId, ...record("tasks") };
+  const source = task.source || state.drawer.source || "";
+  const category = task.category || (source === "client_portal_support" ? "Support" : "");
   return `
     <form data-form="task" class="form-grid">
       ${select("clientId", "Client", state.data.clients.map((c) => [c.id, c.name]), task.clientId)}
       ${input("title", "Task", task.title, true)}
       ${input("dueDate", "Due date", task.dueDate || today(), false, "date")}
       ${select("priority", "Priority", PRIORITIES, task.priority || "Normal")}
+      ${source ? `<input type="hidden" name="source" value="${escapeHtml(source)}" />` : ""}
+      ${category ? `<input type="hidden" name="category" value="${escapeHtml(category)}" />` : ""}
       <button class="btn span-2" type="submit">Save Task</button>
     </form>
   `;
@@ -2167,6 +2207,8 @@ function normalizeRecord(type, values, existing = {}) {
   }
   if (type === "task") {
     base.done = Boolean(existing.done);
+    base.createdAt = base.createdAt || new Date().toISOString();
+    if (base.source === "client_portal_support") base.category = "Support";
   }
   if (type === "note") {
     base.createdAt = base.createdAt || new Date().toISOString();
@@ -2398,6 +2440,8 @@ function applyPortalUpdates(updates) {
         title: update.payload.title || "Client support request",
         dueDate: update.payload.dueDate || today(),
         priority: update.payload.priority || "Normal",
+        source: "client_portal_support",
+        category: "Support",
       }));
       applied.push(update.id);
       clearIds.push(update.id);

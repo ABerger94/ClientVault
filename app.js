@@ -539,6 +539,9 @@ function bindShell() {
   app.querySelectorAll("[data-confirm-meeting]").forEach((button) => {
     button.addEventListener("click", () => confirmMeeting(button.dataset.confirmMeeting));
   });
+  app.querySelectorAll("[data-open-asset]").forEach((button) => {
+    button.addEventListener("click", () => openAssetFile(button.dataset.openAsset));
+  });
   app.querySelectorAll("[data-close]").forEach((button) => {
     button.addEventListener("click", () => {
       state.drawer = null;
@@ -1129,7 +1132,7 @@ function assetCards(assets) {
           ${asset.notes ? `<p>${escapeHtml(asset.notes)}</p>` : ""}
         </div>
         <div class="inline-actions">
-          ${asset.dataUrl ? `<a class="btn secondary" href="${escapeHtml(asset.dataUrl)}" target="_blank" rel="noreferrer" download="${escapeHtml(asset.name || "client-asset")}">Open</a>` : ""}
+          ${asset.dataUrl ? `<button class="btn secondary" data-open-asset="${asset.id}">Open</button>` : ""}
           <button class="btn secondary" data-edit="clientAsset" data-id="${asset.id}" data-client="${asset.clientId}">Edit</button>
           <button class="btn secondary" data-delete="clientAsset" data-id="${asset.id}">Delete</button>
         </div>
@@ -1178,6 +1181,45 @@ function formatBytes(bytes) {
   if (size < 1024) return `${size} B`;
   if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function openAssetFile(assetId) {
+  const asset = state.data.clientAssets.find((item) => item.id === assetId);
+  if (!asset?.dataUrl) {
+    showToast("This asset does not have a file attached.");
+    return;
+  }
+  try {
+    const url = createAssetObjectUrl(asset);
+    const opened = window.open(url, "_blank");
+    if (opened) {
+      opened.opener = null;
+    } else {
+      const link = document.createElement("a");
+      link.href = url;
+      link.target = "_blank";
+      link.rel = "noreferrer";
+      link.download = asset.name || "client-asset";
+      document.body.append(link);
+      link.click();
+      link.remove();
+    }
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  } catch (error) {
+    showToast(error.message || "Could not open this asset.");
+  }
+}
+
+function createAssetObjectUrl(asset) {
+  const [header, encoded] = String(asset.dataUrl || "").split(",");
+  const mime = header.match(/^data:([^;]+);base64$/)?.[1] || asset.type || "application/octet-stream";
+  if (!encoded) throw new Error("This asset file is not readable.");
+  const binary = atob(encoded);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return URL.createObjectURL(new Blob([bytes], { type: mime }));
 }
 
 function onboardingView() {

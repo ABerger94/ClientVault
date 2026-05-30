@@ -94,6 +94,9 @@ function renderPortal() {
       payload: { step: button.dataset.completeStep, done: true },
     }));
   });
+  portalApp.querySelectorAll("[data-open-asset]").forEach((button) => {
+    button.addEventListener("click", () => openAssetFile(button.dataset.openAsset));
+  });
 }
 
 function loginScreen() {
@@ -496,7 +499,7 @@ function filesView() {
           <div class="row-sub">${escapeHtml(asset.category || "File")} · ${formatBytes(asset.size)}</div>
           ${asset.notes ? `<p class="row-sub">${escapeHtml(asset.notes)}</p>` : ""}
         </div>
-        ${asset.dataUrl ? `<a class="btn secondary" href="${escapeHtml(asset.dataUrl)}" target="_blank" rel="noreferrer" download="${escapeHtml(asset.name || "client-asset")}">Open</a>` : ""}
+        ${asset.dataUrl ? `<button class="btn secondary" data-open-asset="${asset.id}">Open</button>` : ""}
       </article>
     `).join("")}
     ${projects.map((project) => `
@@ -525,6 +528,47 @@ function formatBytes(bytes) {
   if (size < 1024) return `${size} B`;
   if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function openAssetFile(assetId) {
+  const asset = (portalState.portal.assets || []).find((item) => item.id === assetId);
+  if (!asset?.dataUrl) {
+    portalState.error = "This file is not available.";
+    renderPortal();
+    return;
+  }
+  try {
+    const url = createAssetObjectUrl(asset);
+    const opened = window.open(url, "_blank");
+    if (opened) {
+      opened.opener = null;
+    } else {
+      const link = document.createElement("a");
+      link.href = url;
+      link.target = "_blank";
+      link.rel = "noreferrer";
+      link.download = asset.name || "client-asset";
+      document.body.append(link);
+      link.click();
+      link.remove();
+    }
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  } catch (error) {
+    portalState.error = error.message || "Could not open this file.";
+    renderPortal();
+  }
+}
+
+function createAssetObjectUrl(asset) {
+  const [header, encoded] = String(asset.dataUrl || "").split(",");
+  const mime = header.match(/^data:([^;]+);base64$/)?.[1] || asset.type || "application/octet-stream";
+  if (!encoded) throw new Error("This file is not readable.");
+  const binary = atob(encoded);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return URL.createObjectURL(new Blob([bytes], { type: mime }));
 }
 
 function formatDateTime(value) {

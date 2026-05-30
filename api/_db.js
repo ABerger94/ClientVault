@@ -1,5 +1,5 @@
 import { sql } from "@vercel/postgres";
-import { get, put } from "@vercel/blob";
+import { BlobNotFoundError, get, put } from "@vercel/blob";
 
 const STATE_ID = "default";
 const STATE_PATH = "crm/state.json";
@@ -23,6 +23,7 @@ export function blankData() {
     questionnaires: [],
     meetings: [],
     notes: [],
+    clientAssets: [],
     portalUpdateIds: [],
     audit: [],
   };
@@ -136,12 +137,12 @@ export async function appendAudit(actor, action, metadata = {}) {
 
 async function readBlobJson(path, fallback = null) {
   try {
-    const blob = await get(path);
-    const response = await fetch(blob.downloadUrl || blob.url);
-    if (!response.ok) return fallback;
-    return await response.json();
-  } catch {
-    return fallback;
+    const result = await get(path, { access: "private", useCache: false });
+    if (!result) return fallback;
+    return await new Response(result.stream).json();
+  } catch (error) {
+    if (error instanceof BlobNotFoundError) return fallback;
+    throw error;
   }
 }
 

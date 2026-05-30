@@ -543,6 +543,87 @@ textarea:focus {
   margin-bottom: 0;
 }
 
+.asset-card,
+.brand-card {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.asset-card:last-child,
+.brand-card:last-child {
+  border-bottom: 0;
+}
+
+.asset-card p {
+  margin: 6px 0 0;
+}
+
+.asset-thumb {
+  width: 72px;
+  height: 72px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  object-fit: cover;
+  background: var(--panel-soft);
+}
+
+.file-thumb {
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.swatch-strip {
+  display: inline-flex;
+  gap: 4px;
+  margin-right: 8px;
+  vertical-align: middle;
+}
+
+.color-swatch {
+  width: 14px;
+  height: 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+
+.palette-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(72px, 1fr));
+  gap: 8px;
+}
+
+.palette-color {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.palette-color span {
+  height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.palette-color strong,
+.palette-color small {
+  overflow-wrap: anywhere;
+}
+
+.form-section-title {
+  margin: 6px 0 12px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
 .roadmap {
   margin: 0;
   padding: 11px 12px;
@@ -851,6 +932,15 @@ textarea:focus {
 
   .row {
     grid-template-columns: 1fr;
+  }
+
+  .asset-card,
+  .brand-card {
+    grid-template-columns: 1fr;
+  }
+
+  .palette-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .topbar,

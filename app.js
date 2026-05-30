@@ -84,6 +84,7 @@ const blankData = () => ({
   questionnaires: [],
   meetings: [],
   notes: [],
+  clientAssets: [],
   portalUpdateIds: [],
   audit: [],
 });
@@ -129,6 +130,11 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
+function colorValue(value, fallback = "") {
+  const color = String(value || "").trim();
+  return /^#[0-9a-f]{6}$/i.test(color) ? color : fallback;
+}
+
 function brandMark() {
   return `
     <div class="brand-mark" aria-hidden="true">
@@ -157,6 +163,7 @@ function hydrateData(data) {
   next.questionnaires ||= [];
   next.meetings ||= [];
   next.notes ||= [];
+  next.clientAssets ||= [];
   next.portalUpdateIds ||= [];
   next.audit ||= [];
   return next;
@@ -174,7 +181,11 @@ function visibleClients() {
       .filter((project) => project.clientId === client.id)
       .map((project) => `${project.name} ${project.status}`)
       .join(" ");
-    return `${client.name} ${client.company} ${client.email} ${client.phone} ${client.segment} ${client.tags} ${contacts} ${projects}`
+    const assets = state.data.clientAssets
+      .filter((asset) => asset.clientId === client.id)
+      .map((asset) => `${asset.name} ${asset.category} ${asset.notes}`)
+      .join(" ");
+    return `${client.name} ${client.company} ${client.email} ${client.phone} ${client.segment} ${client.tags} ${contacts} ${projects} ${assets}`
       .toLowerCase()
       .includes(query);
   });
@@ -441,6 +452,7 @@ function shell() {
           ${navButton("contacts", "Contacts")}
           ${navButton("onboarding", "Onboarding")}
           ${navButton("projects", "Projects")}
+          ${navButton("assets", "Assets")}
           ${navButton("schedule", "Schedule")}
           ${navButton("pipeline", "Pipeline")}
           ${navButton("tasks", "Tasks")}
@@ -569,6 +581,7 @@ function view() {
   if (state.view === "contacts") return contactsView();
   if (state.view === "onboarding") return onboardingView();
   if (state.view === "projects") return projectsView();
+  if (state.view === "assets") return assetsView();
   if (state.view === "schedule") return scheduleView();
   if (state.view === "pipeline") return pipelineView();
   if (state.view === "tasks") return tasksView();
@@ -668,14 +681,21 @@ function clientRows(clients) {
             <button class="btn secondary" data-open="contact" data-client="${client.id}">Contact</button>
           <button class="btn secondary" data-open="deal" data-client="${client.id}">Deal</button>
           <button class="btn secondary" data-open="project" data-client="${client.id}">Project</button>
+          <button class="btn secondary" data-open="clientAsset" data-client="${client.id}">Asset</button>
           <button class="btn secondary" data-portal-client="${client.id}">Portal</button>
           <button class="btn secondary" data-open="portalAccess" data-client="${client.id}">Publish</button>
         </div>
-          <div class="span-2 row-sub">${contacts.map((contact) => escapeHtml(`${contact.name} <${contact.email}>`)).join(" · ")}</div>
+          <div class="span-2 row-sub">${clientBrandSwatches(client)}${contacts.map((contact) => escapeHtml(`${contact.name} <${contact.email}>`)).join(" · ")}</div>
         </article>
       `;
     })
     .join("");
+}
+
+function clientBrandSwatches(client) {
+  const colors = [client.brandPrimary, client.brandSecondary, client.brandAccent, client.brandNeutral].filter(Boolean);
+  if (!colors.length) return "";
+  return `<span class="swatch-strip">${colors.map((color) => `<span class="color-swatch" style="background:${colorValue(color, "#ffffff")}"></span>`).join("")}</span>`;
 }
 
 function contactsView() {
@@ -860,7 +880,7 @@ function portalView() {
       </div>
     </div>
     <section class="portal-shell">
-      <header class="portal-hero">
+      <header class="portal-hero" style="${portalBrandStyle(client)}">
         <div class="brand-row">
           ${brandMark()}
           <div>
@@ -890,6 +910,15 @@ function portalView() {
 
 function portalTab(tab, label) {
   return `<button class="${state.portalTab === tab ? "active" : ""}" data-portal-tab="${tab}">${label}</button>`;
+}
+
+function portalBrandStyle(client) {
+  const primary = colorValue(client.brandPrimary);
+  const secondary = colorValue(client.brandSecondary);
+  if (!primary && !secondary) return "";
+  const start = primary || "#101820";
+  const end = secondary || "#101820";
+  return `background:linear-gradient(135deg, ${start}, ${end});`;
 }
 
 function portalTabView(client) {
@@ -1028,8 +1057,11 @@ function portalSupport(client) {
 
 function portalFiles(client) {
   const projects = clientProjects(client.id).filter((project) => project.deliverableUrl);
-  if (!projects.length) return `<div class="empty">No deliverables or shared links yet.</div>`;
-  return projects.map((project) => `
+  const assets = clientAssets(client.id);
+  if (!projects.length && !assets.length) return `<div class="empty">No deliverables, shared links, or files yet.</div>`;
+  return `
+    ${assets.length ? assetCards(assets) : ""}
+    ${projects.map((project) => `
     <article class="event-row">
       <div>
         <strong>${escapeHtml(project.name)}</strong>
@@ -1037,7 +1069,8 @@ function portalFiles(client) {
       </div>
       <a class="btn secondary" href="${escapeHtml(project.deliverableUrl)}" target="_blank" rel="noreferrer">Open</a>
     </article>
-  `).join("");
+  `).join("")}
+  `;
 }
 
 function clientProjects(clientId) {
@@ -1050,6 +1083,101 @@ function clientMeetings(clientId) {
   return state.data.meetings
     .filter((meeting) => meeting.clientId === clientId)
     .sort((a, b) => (a.datetime || "").localeCompare(b.datetime || ""));
+}
+
+function clientAssets(clientId) {
+  return state.data.clientAssets
+    .filter((asset) => asset.clientId === clientId)
+    .sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+}
+
+function assetsView() {
+  const clients = visibleClients();
+  const clientIds = new Set(clients.map((client) => client.id));
+  const assets = state.data.clientAssets.filter((asset) => clientIds.has(asset.clientId));
+  return `
+    <div class="section-head">
+      <div>
+        <h1>Assets</h1>
+        <p class="muted">${assets.length} saved asset${assets.length === 1 ? "" : "s"} across matching clients.</p>
+      </div>
+      <button class="btn" data-open="clientAsset">Upload Asset</button>
+    </div>
+    <div class="layout-two">
+      <section class="panel">
+        <div class="panel-head"><h2>Client Files</h2></div>
+        <div class="panel-body">${assetCards(assets)}</div>
+      </section>
+      <section class="panel">
+        <div class="panel-head"><h2>Brand Palettes</h2></div>
+        <div class="panel-body">${brandPaletteCards(clients)}</div>
+      </section>
+    </div>
+  `;
+}
+
+function assetCards(assets) {
+  if (!assets.length) return `<div class="empty">No client assets yet.</div>`;
+  return assets.map((asset) => {
+    const client = getClient(asset.clientId);
+    return `
+      <article class="asset-card">
+        ${assetPreview(asset)}
+        <div>
+          <div class="row-title">${escapeHtml(asset.name || "Untitled file")}</div>
+          <div class="row-sub">${escapeHtml(client?.name || "No client")} · ${escapeHtml(asset.category || "File")} · ${formatBytes(asset.size)}</div>
+          ${asset.notes ? `<p>${escapeHtml(asset.notes)}</p>` : ""}
+        </div>
+        <div class="inline-actions">
+          ${asset.dataUrl ? `<a class="btn secondary" href="${escapeHtml(asset.dataUrl)}" target="_blank" rel="noreferrer" download="${escapeHtml(asset.name || "client-asset")}">Open</a>` : ""}
+          <button class="btn secondary" data-edit="clientAsset" data-id="${asset.id}" data-client="${asset.clientId}">Edit</button>
+          <button class="btn secondary" data-delete="clientAsset" data-id="${asset.id}">Delete</button>
+        </div>
+      </article>
+    `;
+  }).join("");
+}
+
+function assetPreview(asset) {
+  if (asset.type?.startsWith("image/") && asset.dataUrl) {
+    return `<img class="asset-thumb" src="${escapeHtml(asset.dataUrl)}" alt="" />`;
+  }
+  const label = (asset.name || "file").split(".").pop()?.slice(0, 4).toUpperCase() || "FILE";
+  return `<div class="asset-thumb file-thumb">${escapeHtml(label)}</div>`;
+}
+
+function brandPaletteCards(clients) {
+  const brandedClients = clients.filter((client) => [client.brandPrimary, client.brandSecondary, client.brandAccent, client.brandNeutral].some(Boolean));
+  if (!brandedClients.length) return `<div class="empty">No brand colors saved yet.</div>`;
+  return brandedClients.map((client) => `
+    <article class="brand-card">
+      <div>
+        <strong>${escapeHtml(client.name)}</strong>
+        <div class="row-sub">${escapeHtml(client.company || "No company")}</div>
+      </div>
+      <div class="palette-grid">
+        ${brandColor("Primary", client.brandPrimary)}
+        ${brandColor("Secondary", client.brandSecondary)}
+        ${brandColor("Accent", client.brandAccent)}
+        ${brandColor("Neutral", client.brandNeutral)}
+      </div>
+      <button class="btn secondary" data-edit="client" data-id="${client.id}">Edit Colors</button>
+    </article>
+  `).join("");
+}
+
+function brandColor(label, color) {
+  const value = colorValue(color);
+  if (!value) return "";
+  return `<div class="palette-color"><span style="background:${value}"></span><strong>${escapeHtml(label)}</strong><small>${escapeHtml(value)}</small></div>`;
+}
+
+function formatBytes(bytes) {
+  const size = Number(bytes || 0);
+  if (!size) return "unknown size";
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function onboardingView() {
@@ -1441,7 +1569,7 @@ function settingsView() {
           ${input("adminSecret", "Portal admin secret for automatic sync", localStorage.getItem(PORTAL_ADMIN_SECRET_KEY) || "", true, "password", "span-2")}
           <button class="btn span-2" type="submit">Save Sync Secret</button>
         </form>
-        <p><strong>Records:</strong> ${state.data.clients.length} clients, ${state.data.contacts.length} contacts, ${state.data.deals.length} deals, ${state.data.tasks.length} tasks, ${state.data.notes.length} notes.</p>
+        <p><strong>Records:</strong> ${state.data.clients.length} clients, ${state.data.contacts.length} contacts, ${state.data.deals.length} deals, ${state.data.tasks.length} tasks, ${state.data.clientAssets.length} assets, ${state.data.notes.length} notes.</p>
         <p><strong>Signed in:</strong> ${escapeHtml(state.sessionEmail || "Admin")}</p>
         <p><strong>Last saved:</strong> ${escapeHtml(state.data.updatedAt || "Unknown")}</p>
         <p><strong>Auto-lock:</strong> 15 minutes of inactivity.</p>
@@ -1483,6 +1611,7 @@ function drawerTitle() {
     contact: "Contact",
     onboarding: "Onboarding Checklist",
     questionnaire: "Questionnaire",
+    clientAsset: "Client Asset",
     portalAccess: "Portal Access",
     project: "Project",
     meeting: "Meeting",
@@ -1499,6 +1628,7 @@ function drawerForm() {
   if (type === "contact") return contactForm();
   if (type === "onboarding") return onboardingForm();
   if (type === "questionnaire") return questionnaireForm();
+  if (type === "clientAsset") return clientAssetForm();
   if (type === "portalAccess") return portalAccessForm();
   if (type === "project") return projectForm();
   if (type === "meeting") return meetingForm();
@@ -1526,8 +1656,31 @@ function clientForm() {
       ${input("owner", "Owner", client.owner)}
       ${input("lastTouch", "Last touch", client.lastTouch || today(), false, "date")}
       ${input("tags", "Tags", client.tags, false, "text", "span-2")}
+      <div class="span-2 form-section-title">Brand colors</div>
+      ${input("brandPrimary", "Primary color", client.brandPrimary || "#116466", false, "color")}
+      ${input("brandSecondary", "Secondary color", client.brandSecondary || "#101820", false, "color")}
+      ${input("brandAccent", "Accent color", client.brandAccent || "#a54f2a", false, "color")}
+      ${input("brandNeutral", "Neutral color", client.brandNeutral || "#f5f7f9", false, "color")}
       ${textarea("nextStep", "Next step", client.nextStep, "span-2")}
       <button class="btn span-2" type="submit">Save Client</button>
+    </form>
+  `;
+}
+
+function clientAssetForm() {
+  const asset = { clientId: state.drawer.clientId, ...record("clientAssets") };
+  return `
+    <form data-form="clientAsset" class="form-grid">
+      ${select("clientId", "Client", state.data.clients.map((c) => [c.id, c.name]), asset.clientId)}
+      ${select("category", "Category", ["Logo", "Brand Guide", "Palette", "Image", "Copy", "Contract", "Deliverable", "Reference", "Other"], asset.category || "Reference")}
+      <div class="field span-2">
+        <label>File${asset.id ? " replacement" : ""}</label>
+        <input name="assetFiles" type="file" ${asset.id ? "" : "required"} ${asset.id ? "" : "multiple"} />
+      </div>
+      ${asset.id ? `<div class="secure-note span-2">Current file: ${escapeHtml(asset.name || "Untitled")} · ${formatBytes(asset.size)}</div>` : ""}
+      ${input("displayName", "Display name", asset.displayName || asset.name || "", false, "text", "span-2")}
+      ${textarea("notes", "Notes", asset.notes, "span-2")}
+      <button class="btn span-2" type="submit">${asset.id ? "Save Asset" : "Upload Asset"}</button>
     </form>
   `;
 }
@@ -1737,6 +1890,10 @@ async function submitForm(event) {
   event.preventDefault();
   const form = event.currentTarget;
   const type = form.dataset.form;
+  if (type === "clientAsset") {
+    await submitClientAsset(form);
+    return;
+  }
   const values = Object.fromEntries(new FormData(form).entries());
   if (type === "portalSecret") {
     savePortalAdminSecret(event);
@@ -1751,6 +1908,7 @@ async function submitForm(event) {
     contact: "contacts",
     onboarding: "onboarding",
     questionnaire: "questionnaires",
+    clientAsset: "clientAssets",
     project: "projects",
     meeting: "meetings",
     deal: "deals",
@@ -1785,6 +1943,10 @@ function normalizeRecord(type, values, existing = {}) {
   if (type === "client") {
     base.value = Number(base.value || 0);
     base.createdAt = base.createdAt || new Date().toISOString();
+    base.brandPrimary = colorValue(base.brandPrimary);
+    base.brandSecondary = colorValue(base.brandSecondary);
+    base.brandAccent = colorValue(base.brandAccent);
+    base.brandNeutral = colorValue(base.brandNeutral);
   }
   if (type === "deal") {
     base.value = Number(base.value || 0);
@@ -1816,6 +1978,70 @@ function normalizeRecord(type, values, existing = {}) {
     base.createdAt = base.createdAt || new Date().toISOString();
   }
   return base;
+}
+
+async function submitClientAsset(form) {
+  const values = Object.fromEntries(new FormData(form).entries());
+  const files = [...form.querySelector("input[type='file']").files];
+  const existing = state.drawer.id
+    ? state.data.clientAssets.find((asset) => asset.id === state.drawer.id)
+    : null;
+  if (!existing && !files.length) {
+    showToast("Choose at least one file to upload.");
+    return;
+  }
+  if (files.some((file) => file.size > 10 * 1024 * 1024)) {
+    showToast("Each asset must be 10 MB or smaller.");
+    return;
+  }
+  if (existing) {
+    Object.assign(existing, {
+      clientId: values.clientId,
+      category: values.category,
+      displayName: values.displayName,
+      notes: values.notes,
+      updatedAt: new Date().toISOString(),
+    });
+    if (files[0]) Object.assign(existing, await fileRecord(files[0], values, existing.id));
+    state.drawer = null;
+    await saveData("Updated client asset");
+    showToast("Asset saved.");
+    render();
+    return;
+  }
+  const records = await Promise.all(files.map((file) => fileRecord(file, values)));
+  state.data.clientAssets.push(...records);
+  const uniqueClientIds = new Set(records.map((asset) => asset.clientId));
+  uniqueClientIds.forEach((clientId) => {
+    const checklist = ensureOnboarding(clientId);
+    checklist.brandAssetsCollected = true;
+  });
+  state.drawer = null;
+  await saveData(`Uploaded ${records.length} client asset${records.length === 1 ? "" : "s"}`);
+  showToast(`${records.length} asset${records.length === 1 ? "" : "s"} uploaded.`);
+  render();
+}
+
+function fileRecord(file, values, existingId = "") {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener("load", () => resolve({
+      id: existingId || id(),
+      clientId: values.clientId,
+      category: values.category || "Reference",
+      name: values.displayName || file.name,
+      displayName: values.displayName || file.name,
+      originalName: file.name,
+      type: file.type || "application/octet-stream",
+      size: file.size,
+      dataUrl: reader.result,
+      notes: values.notes || "",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }));
+    reader.addEventListener("error", () => reject(new Error(`Could not read ${file.name}`)));
+    reader.readAsDataURL(file);
+  });
 }
 
 async function publishPortalAccess(values) {
@@ -1992,12 +2218,17 @@ function buildPortalSnapshot(clientId) {
       phone: client.phone,
       website: client.website,
       nextStep: client.nextStep,
+      brandPrimary: client.brandPrimary,
+      brandSecondary: client.brandSecondary,
+      brandAccent: client.brandAccent,
+      brandNeutral: client.brandNeutral,
     },
     contacts: state.data.contacts.filter((item) => item.clientId === clientId),
     projects: clientProjects(clientId),
     meetings: clientMeetings(clientId),
     tasks: state.data.tasks.filter((item) => item.clientId === clientId),
     notes: state.data.notes.filter((item) => item.clientId === clientId),
+    assets: clientAssets(clientId),
     questionnaire: state.data.questionnaires.find((item) => item.clientId === clientId) || null,
     onboarding: checklist
       ? {
@@ -2117,7 +2348,7 @@ function ensureOnboarding(clientId) {
 async function deleteRecord(type, itemId) {
   const message =
     type === "client"
-      ? "Delete this client and all related contacts, deals, tasks, and notes?"
+      ? "Delete this client and all related contacts, deals, tasks, notes, and assets?"
       : "Delete this record?";
   if (!confirm(message)) return;
   if (type === "client") {
@@ -2130,11 +2361,13 @@ async function deleteRecord(type, itemId) {
     state.data.questionnaires = state.data.questionnaires.filter((item) => item.clientId !== itemId);
     state.data.meetings = state.data.meetings.filter((item) => item.clientId !== itemId);
     state.data.notes = state.data.notes.filter((item) => item.clientId !== itemId);
+    state.data.clientAssets = state.data.clientAssets.filter((item) => item.clientId !== itemId);
   } else {
     const collections = {
       contact: "contacts",
       onboarding: "onboarding",
       questionnaire: "questionnaires",
+      clientAsset: "clientAssets",
       project: "projects",
       meeting: "meetings",
       deal: "deals",

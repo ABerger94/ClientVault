@@ -1,4 +1,4 @@
-import { get, put } from "@vercel/blob";
+import { BlobNotFoundError, get, put } from "@vercel/blob";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { hasDatabase, readKv, writeKv } from "./_db.js";
 
@@ -9,18 +9,19 @@ const UPDATES_PATH = "portal/updates.json";
 export function json(res, status, body) {
   res.statusCode = status;
   res.setHeader("content-type", "application/json; charset=utf-8");
+  res.setHeader("cache-control", "no-store");
   res.end(JSON.stringify(body));
 }
 
 export async function readJson(path, fallback = null) {
   if (hasDatabase()) return await readKv(path, fallback);
   try {
-    const blob = await get(path);
-    const response = await fetch(blob.downloadUrl || blob.url);
-    if (!response.ok) return fallback;
-    return await response.json();
-  } catch {
-    return fallback;
+    const result = await get(path, { access: "private", useCache: false });
+    if (!result) return fallback;
+    return await new Response(result.stream).json();
+  } catch (error) {
+    if (error instanceof BlobNotFoundError) return fallback;
+    throw error;
   }
 }
 

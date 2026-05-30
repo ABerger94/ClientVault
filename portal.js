@@ -28,6 +28,11 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
+function colorValue(value, fallback = "") {
+  const color = String(value || "").trim();
+  return /^#[0-9a-f]{6}$/i.test(color) ? color : fallback;
+}
+
 function brandMark() {
   return `
     <div class="brand-mark" aria-hidden="true">
@@ -179,7 +184,7 @@ function portalShell() {
   const { client } = portalState.portal;
   return `
     <section class="portal-public">
-      <header class="portal-hero public-portal-hero">
+      <header class="portal-hero public-portal-hero" style="${portalBrandStyle(client)}">
         <div class="brand-row">
           ${brandMark()}
           <div>
@@ -208,6 +213,13 @@ function portalShell() {
 
 function tabButton(tab, label) {
   return `<button class="${portalState.tab === tab ? "active" : ""}" data-portal-tab="${tab}">${label}</button>`;
+}
+
+function portalBrandStyle(client) {
+  const primary = colorValue(client.brandPrimary);
+  const secondary = colorValue(client.brandSecondary);
+  if (!primary && !secondary) return "";
+  return `background:linear-gradient(135deg, ${primary || "#101820"}, ${secondary || "#101820"});`;
 }
 
 function currentTab() {
@@ -472,9 +484,22 @@ function supportView() {
 }
 
 function filesView() {
+  const assets = portalState.portal.assets || [];
   const projects = portalState.portal.projects.filter((project) => project.deliverableUrl);
-  if (!projects.length) return `<div class="empty">No deliverables or shared links yet.</div>`;
-  return projects.map((project) => `
+  if (!projects.length && !assets.length) return `<div class="empty">No deliverables, shared links, or files yet.</div>`;
+  return `
+    ${assets.map((asset) => `
+      <article class="asset-card">
+        ${assetPreview(asset)}
+        <div>
+          <strong>${escapeHtml(asset.displayName || asset.name || "Untitled file")}</strong>
+          <div class="row-sub">${escapeHtml(asset.category || "File")} · ${formatBytes(asset.size)}</div>
+          ${asset.notes ? `<p class="row-sub">${escapeHtml(asset.notes)}</p>` : ""}
+        </div>
+        ${asset.dataUrl ? `<a class="btn secondary" href="${escapeHtml(asset.dataUrl)}" target="_blank" rel="noreferrer" download="${escapeHtml(asset.name || "client-asset")}">Open</a>` : ""}
+      </article>
+    `).join("")}
+    ${projects.map((project) => `
     <article class="event-row">
       <div>
         <strong>${escapeHtml(project.name)}</strong>
@@ -482,7 +507,24 @@ function filesView() {
       </div>
       <a class="btn secondary" href="${escapeHtml(project.deliverableUrl)}" target="_blank" rel="noreferrer">Open</a>
     </article>
-  `).join("");
+  `).join("")}
+  `;
+}
+
+function assetPreview(asset) {
+  if (asset.type?.startsWith("image/") && asset.dataUrl) {
+    return `<img class="asset-thumb" src="${escapeHtml(asset.dataUrl)}" alt="" />`;
+  }
+  const label = (asset.name || "file").split(".").pop()?.slice(0, 4).toUpperCase() || "FILE";
+  return `<div class="asset-thumb file-thumb">${escapeHtml(label)}</div>`;
+}
+
+function formatBytes(bytes) {
+  const size = Number(bytes || 0);
+  if (!size) return "unknown size";
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function formatDateTime(value) {

@@ -1828,13 +1828,13 @@ function brandExtraColorField(entry = {}) {
 function clientAssetForm() {
   const asset = { clientId: state.drawer.clientId, ...record("clientAssets") };
   return `
-    <form data-form="clientAsset" class="form-grid">
+    <form data-form="clientAsset" class="form-grid" novalidate>
       ${select("clientId", "Client", state.data.clients.map((c) => [c.id, c.name]), asset.clientId)}
       ${select("category", "Category", ["Logo", "Brand Guide", "Palette", "Image", "Copy", "Contract", "Deliverable", "Reference", "Other"], asset.category || "Reference")}
       ${input("assetLabel", "Asset label", asset.assetLabel || asset.category || "Reference")}
       <div class="field span-2">
         <label>File${asset.id ? " replacement" : ""}</label>
-        <input name="assetFiles" type="file" ${asset.id ? "" : "required"} ${asset.id ? "" : "multiple"} />
+        <input name="assetFiles" type="file" ${asset.id ? "" : "multiple"} />
       </div>
       ${asset.id ? `<div class="secure-note span-2">Current file: ${escapeHtml(asset.name || "Untitled")} · ${formatBytes(asset.size)}</div>` : ""}
       ${input("displayName", "Display name", asset.displayName || asset.name || "", false, "text", "span-2")}
@@ -2160,6 +2160,10 @@ async function submitClientAsset(form) {
   const existing = state.drawer.id
     ? state.data.clientAssets.find((asset) => asset.id === state.drawer.id)
     : null;
+  if (!values.clientId) {
+    showToast("Choose a client before uploading an asset.");
+    return;
+  }
   if (!existing && !files.length) {
     showToast("Choose at least one file to upload.");
     return;
@@ -2169,6 +2173,7 @@ async function submitClientAsset(form) {
     return;
   }
   try {
+    showToast(files.length ? `Uploading ${files.length} asset${files.length === 1 ? "" : "s"}...` : "Saving asset...");
     if (existing) {
       Object.assign(existing, {
         clientId: values.clientId,

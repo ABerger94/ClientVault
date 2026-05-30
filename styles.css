@@ -682,15 +682,21 @@ textarea:focus {
   text-transform: uppercase;
 }
 
+.brand-color-list,
 .brand-extra-list {
   display: grid;
   gap: 10px;
 }
 
+.brand-color-row,
 .brand-extra-row {
   display: grid;
   grid-template-columns: minmax(120px, 0.45fr) minmax(0, 1fr);
   gap: 12px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfd;
 }
 
 .roadmap {
@@ -1045,6 +1051,7 @@ textarea:focus {
     grid-template-columns: 1fr;
   }
 
+  .brand-color-row,
   .brand-extra-row {
     grid-template-columns: 1fr;
   }

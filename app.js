@@ -1785,14 +1785,12 @@ function clientForm() {
       ${input("lastTouch", "Last touch", client.lastTouch || today(), false, "date")}
       ${input("tags", "Tags", client.tags, false, "text", "span-2")}
       <div class="span-2 form-section-title">Brand colors</div>
-      ${input("brandPrimary", "Primary color", client.brandPrimary || "#116466", false, "color")}
-      ${input("brandPrimaryLabel", "Primary label", client.brandPrimaryLabel || "Primary")}
-      ${input("brandSecondary", "Secondary color", client.brandSecondary || "#101820", false, "color")}
-      ${input("brandSecondaryLabel", "Secondary label", client.brandSecondaryLabel || "Secondary")}
-      ${input("brandAccent", "Accent color", client.brandAccent || "#a54f2a", false, "color")}
-      ${input("brandAccentLabel", "Accent label", client.brandAccentLabel || "Accent")}
-      ${input("brandNeutral", "Neutral color", client.brandNeutral || "#f5f7f9", false, "color")}
-      ${input("brandNeutralLabel", "Neutral label", client.brandNeutralLabel || "Neutral")}
+      <div class="span-2 brand-color-list">
+        ${brandFixedColorField("brandPrimary", "brandPrimaryLabel", client.brandPrimary || "#116466", client.brandPrimaryLabel || "Primary")}
+        ${brandFixedColorField("brandSecondary", "brandSecondaryLabel", client.brandSecondary || "#101820", client.brandSecondaryLabel || "Secondary")}
+        ${brandFixedColorField("brandAccent", "brandAccentLabel", client.brandAccent || "#a54f2a", client.brandAccentLabel || "Accent")}
+        ${brandFixedColorField("brandNeutral", "brandNeutralLabel", client.brandNeutral || "#f5f7f9", client.brandNeutralLabel || "Neutral")}
+      </div>
       <div class="span-2 form-section-title">Additional brand colors</div>
       <div class="span-2 brand-extra-list" data-brand-extra-list>
         ${brandExtraColorFields(client.brandColors)}
@@ -1801,6 +1799,15 @@ function clientForm() {
       ${textarea("nextStep", "Next step", client.nextStep, "span-2")}
       <button class="btn span-2" type="submit">Save Client</button>
     </form>
+  `;
+}
+
+function brandFixedColorField(colorName, labelName, color, label) {
+  return `
+    <div class="brand-color-row">
+      ${input(colorName, "Color", color, false, "color")}
+      ${input(labelName, "Label", label)}
+    </div>
   `;
 }
 
@@ -2195,17 +2202,13 @@ async function submitClientAsset(form) {
 }
 
 async function fileRecord(file, values, existingId = "") {
-  const dataUrl = await fileDataUrl(file);
+  const formData = new FormData();
+  formData.append("clientId", values.clientId);
+  formData.append("file", file, file.name);
   const response = await fetch("/api/client-asset-upload", {
     method: "POST",
-    headers: { "content-type": "application/json" },
     credentials: "same-origin",
-    body: JSON.stringify({
-      clientId: values.clientId,
-      filename: file.name,
-      contentType: file.type || "application/octet-stream",
-      dataUrl,
-    }),
+    body: formData,
   });
   const result = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(result.error || `Could not upload ${file.name}`);
@@ -2226,15 +2229,6 @@ async function fileRecord(file, values, existingId = "") {
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
-}
-
-function fileDataUrl(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.addEventListener("load", () => resolve(reader.result));
-    reader.addEventListener("error", () => reject(new Error(`Could not read ${file.name}`)));
-    reader.readAsDataURL(file);
-  });
 }
 
 async function publishPortalAccess(values) {

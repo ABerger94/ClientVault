@@ -1233,10 +1233,11 @@ function assetLabel(asset) {
 }
 
 function assetOpenable(asset) {
-  return Boolean(asset.url || asset.downloadUrl || asset.dataUrl);
+  return Boolean(asset.pathname || asset.url || asset.downloadUrl || asset.dataUrl);
 }
 
 function assetPreviewUrl(asset) {
+  if (asset.pathname) return assetFileUrl(asset);
   return asset.url || asset.downloadUrl || asset.dataUrl || "";
 }
 
@@ -1289,8 +1290,8 @@ function openAssetFile(assetId) {
     return;
   }
   try {
-    const url = asset.url || asset.downloadUrl || createAssetObjectUrl(asset);
-    const shouldRevoke = !asset.url && !asset.downloadUrl;
+    const url = asset.pathname ? assetFileUrl(asset) : asset.url || asset.downloadUrl || createAssetObjectUrl(asset);
+    const shouldRevoke = !asset.pathname && !asset.url && !asset.downloadUrl;
     const opened = window.open(url, "_blank");
     if (opened) {
       opened.opener = null;
@@ -1308,6 +1309,13 @@ function openAssetFile(assetId) {
   } catch (error) {
     showToast(error.message || "Could not open this asset.");
   }
+}
+
+function assetFileUrl(asset) {
+  const params = new URLSearchParams({ pathname: asset.pathname });
+  const filename = asset.originalName || asset.name || asset.displayName || "";
+  if (filename) params.set("filename", filename);
+  return `/api/asset-file?${params.toString()}`;
 }
 
 function createAssetObjectUrl(asset) {

@@ -654,10 +654,11 @@ function assetLabel(asset) {
 }
 
 function assetOpenable(asset) {
-  return Boolean(asset.url || asset.downloadUrl || asset.dataUrl);
+  return Boolean(asset.pathname || asset.url || asset.downloadUrl || asset.dataUrl);
 }
 
 function assetPreviewUrl(asset) {
+  if (asset.pathname) return "";
   return asset.url || asset.downloadUrl || asset.dataUrl || "";
 }
 
@@ -669,7 +670,7 @@ function formatBytes(bytes) {
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function openAssetFile(assetId) {
+async function openAssetFile(assetId) {
   const asset = (portalState.portal.assets || []).find((item) => item.id === assetId);
   if (!assetOpenable(asset)) {
     portalState.error = "This file is not available.";
@@ -677,6 +678,25 @@ function openAssetFile(assetId) {
     return;
   }
   try {
+    if (asset.pathname) {
+      const opened = window.open("about:blank", "_blank");
+      const url = await fetchPortalAssetUrl(asset);
+      if (opened) {
+        opened.opener = null;
+        opened.location.href = url;
+      } else {
+        const link = document.createElement("a");
+        link.href = url;
+        link.target = "_blank";
+        link.rel = "noreferrer";
+        link.download = asset.name || "client-asset";
+        document.body.append(link);
+        link.click();
+        link.remove();
+      }
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+      return;
+    }
     const url = asset.url || asset.downloadUrl || createAssetObjectUrl(asset);
     const shouldRevoke = !asset.url && !asset.downloadUrl;
     const opened = window.open(url, "_blank");
@@ -697,6 +717,24 @@ function openAssetFile(assetId) {
     portalState.error = error.message || "Could not open this file.";
     renderPortal();
   }
+}
+
+async function fetchPortalAssetUrl(asset) {
+  const response = await fetch("/api/asset-file", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      email: portalState.auth.email,
+      accessCode: portalState.auth.accessCode,
+      pathname: asset.pathname,
+      filename: asset.originalName || asset.name || asset.displayName || "",
+    }),
+  });
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || "Could not open this file.");
+  }
+  return URL.createObjectURL(await response.blob());
 }
 
 function createAssetObjectUrl(asset) {

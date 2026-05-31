@@ -16,7 +16,7 @@ export default async function handler(req, res) {
 
     const pathname = `portal/assets/${safePathSegment(record.portalId)}/${Date.now()}-${randomBytes(6).toString("hex")}-${safeFilename(body.filename)}`;
     const result = await put(pathname, body.buffer, {
-      access: "public",
+      access: "private",
       contentType: body.contentType || "application/octet-stream",
       addRandomSuffix: false,
     });
@@ -29,8 +29,8 @@ export default async function handler(req, res) {
       originalName: body.filename,
       type: body.contentType || "application/octet-stream",
       size: body.buffer.length,
-      url: result.url,
-      downloadUrl: result.downloadUrl || result.url,
+      url: "",
+      downloadUrl: "",
       pathname: result.pathname,
       notes: body.notes || "",
       createdAt: new Date().toISOString(),

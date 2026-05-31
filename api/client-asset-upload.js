@@ -1,6 +1,7 @@
 import { put } from "@vercel/blob";
 import { randomBytes } from "node:crypto";
 import { json, readBody, requireAdmin } from "./_admin-auth.js";
+import { assetFileUrl } from "./asset-file.js";
 
 const MAX_ASSET_BYTES = 15 * 1024 * 1024;
 
@@ -18,14 +19,15 @@ export default async function handler(req, res) {
     const clientId = safePathSegment(body.clientId || "unassigned");
     const pathname = `crm/assets/${clientId}/${Date.now()}-${randomBytes(6).toString("hex")}-${filename}`;
     const result = await put(pathname, buffer, {
-      access: "public",
+      access: "private",
       contentType: body.contentType || "application/octet-stream",
       addRandomSuffix: false,
     });
+    const fileUrl = assetFileUrl(result.pathname, filename);
 
     return json(res, 200, {
-      url: result.url,
-      downloadUrl: result.downloadUrl || result.url,
+      url: fileUrl,
+      downloadUrl: fileUrl,
       pathname: result.pathname,
       contentType: body.contentType || "application/octet-stream",
       size: buffer.length,

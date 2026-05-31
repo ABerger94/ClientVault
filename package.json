@@ -1,7 +1,7 @@
 {
   "type": "module",
   "scripts": {
-    "check": "node --check app.js && node --check portal.js && node --check api/_db.js && node --check api/_admin-auth.js && node --check api/admin-login.js && node --check api/admin-session.js && node --check api/admin-logout.js && node --check api/crm-data.js && node --check api/client-asset-upload.js && node --check api/portal-asset-upload.js && node --check api/_portal-store.js && node --check api/portal-action.js && node --check api/portal-login.js && node --check api/portal-publish.js && node --check api/portal-sync.js && node --check api/health.js"
+    "check": "node --check app.js && node --check portal.js && node --check api/_db.js && node --check api/_admin-auth.js && node --check api/admin-login.js && node --check api/admin-session.js && node --check api/admin-logout.js && node --check api/crm-data.js && node --check api/asset-file.js && node --check api/client-asset-upload.js && node --check api/portal-asset-upload.js && node --check api/_portal-store.js && node --check api/portal-action.js && node --check api/portal-login.js && node --check api/portal-publish.js && node --check api/portal-sync.js && node --check api/health.js"
   },
   "dependencies": {
     "@vercel/blob": "^2.4.0",

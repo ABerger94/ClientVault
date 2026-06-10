@@ -3148,7 +3148,7 @@ async function submitMeetingChat(event) {
       body: JSON.stringify({ meetingId, question }),
     });
     const payload = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(payload.error || "Meeting chat failed");
+    if (!response.ok) throw new Error(payload.error || payload.detail || `Meeting chat failed with ${response.status}`);
     state.data.meetingChats ||= [];
     state.data.meetingChats.push(...(payload.messages || []));
     state.data.meetingChats = state.data.meetingChats.slice(-500);

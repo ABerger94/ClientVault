@@ -39,9 +39,7 @@ export default async function handler(req, res) {
 }
 
 async function answerMeetingQuestion(meeting, question) {
-  const base44 = base44Client();
-  const response = await base44.integrations.Core.InvokeLLM({
-    prompt: `You are a helpful meeting assistant. Answer questions about the following meeting based on its transcript and notes.
+  const prompt = `You are a helpful meeting assistant. Answer questions about the following meeting based on its transcript and notes.
 
 MEETING: ${meeting.title || meeting.type || "Meeting"}
 DATE: ${meeting.datetime || ""}
@@ -58,9 +56,42 @@ ${(meeting.actionItems || []).map((item) => `- ${item.task} (Owner: ${item.owner
 
 USER QUESTION: ${question}
 
-Provide a concise, accurate answer based solely on the meeting content above.`,
-  });
-  return typeof response === "string" ? response : JSON.stringify(response);
+Provide a concise, accurate answer based solely on the meeting content above.`;
+  try {
+    const base44 = base44Client();
+    const response = await base44.integrations.Core.InvokeLLM({ prompt });
+    return typeof response === "string" ? response : JSON.stringify(response);
+  } catch (error) {
+    if ((error.status || error.statusCode) === 404) {
+      return [
+        "Base44 returned 404 for InvokeLLM, so I could not reach the configured Base44 integration endpoint.",
+        "",
+        "Check BASE44_APP_ID, BASE44_SERVER_URL, BASE44_ACCESS_TOKEN or BASE44_SERVICE_TOKEN, and that Core InvokeLLM is enabled for that Base44 app.",
+        "",
+        fallbackAnswer(meeting, question),
+      ].join("\n");
+    }
+    throw error;
+  }
+}
+
+function fallbackAnswer(meeting, question) {
+  const haystack = [
+    meeting.summary || "",
+    meeting.keyDecisions || "",
+    meeting.talkingPoints || "",
+    JSON.stringify(meeting.actionItems || []),
+    meeting.transcript || "",
+  ].join("\n");
+  const words = String(question || "").toLowerCase().split(/\W+/).filter((word) => word.length > 3);
+  const matches = haystack
+    .split(/\r?\n|(?<=[.!?])\s+/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter((line) => words.some((word) => line.toLowerCase().includes(word)))
+    .slice(0, 4);
+  if (matches.length) return `Local fallback from meeting content:\n${matches.map((line) => `- ${line}`).join("\n")}`;
+  return "Local fallback could not find a confident answer in the meeting transcript or notes.";
 }
 
 function chatMessage(meetingId, role, content) {

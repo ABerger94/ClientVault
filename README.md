@@ -41,6 +41,8 @@ Optional Base44/Sage meeting integrations:
 - `BASE44_FATHOM_MODE=remote` to call `base44.functions.invoke("importFathomMeetings", {})` and forward `/api/fathom-webhook` to the Base44 `fathomWebhook` function
 - `FATHOM_API_KEY` and `FATHOM_WEBHOOK_SECRET` for the local Vercel Fathom fallback mode
 
+`BASE44_APP_ID` must be the deployed Sage/Base44 app id. The sample id in a generated Base44 README may not point to the deployed app; `/api/base44-diagnostics` shows the exact integration and function URLs the CRM will call.
+
 Meeting note generation and meeting chat use the Base44 SDK call `base44.integrations.Core.InvokeLLM(...)`.
 
 Recommended before long-term production use:

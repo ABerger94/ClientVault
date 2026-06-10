@@ -1,7 +1,7 @@
 import { json, readBody, requireAdmin } from "../_admin-auth.js";
 import { readCrmData, writeCrmData } from "../_db.js";
 import { randomUUID } from "node:crypto";
-import { base44Client, base44ErrorMessage } from "../_base44.js";
+import { base44ApiClient, base44Client, base44ErrorMessage } from "../_base44.js";
 
 export default async function handler(req, res) {
   const session = requireAdmin(req, res);
@@ -59,7 +59,7 @@ USER QUESTION: ${question}
 Provide a concise, accurate answer based solely on the meeting content above.`;
   try {
     const base44 = base44Client();
-    const response = await base44.integrations.Core.InvokeLLM({ prompt });
+    const response = await base44ApiClient(base44).integrations.Core.InvokeLLM({ prompt });
     return typeof response === "string" ? response : JSON.stringify(response);
   } catch (error) {
     if ((error.status || error.statusCode) === 404) {

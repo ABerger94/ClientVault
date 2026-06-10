@@ -1,5 +1,5 @@
 import { json, readBody, requireAdmin } from "../_admin-auth.js";
-import { base44Client, base44ErrorMessage } from "../_base44.js";
+import { base44ApiClient, base44Client, base44ErrorMessage } from "../_base44.js";
 
 export default async function handler(req, res) {
   const session = requireAdmin(req, res);
@@ -26,7 +26,7 @@ async function invokeMeetingLLM(meeting) {
   const base44 = base44Client();
   let result;
   try {
-    result = await base44.integrations.Core.InvokeLLM({
+    result = await base44ApiClient(base44).integrations.Core.InvokeLLM({
     prompt: `You are an expert meeting analyst. Analyze the following meeting transcript and extract structured information.
 
 Meeting: "${meeting.title || meeting.type || "Meeting"}"

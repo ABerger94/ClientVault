@@ -1,7 +1,7 @@
 import { json } from "../_admin-auth.js";
 import { readCrmData, writeCrmData } from "../_db.js";
 import { meetingExists, normalizeFathomMeeting, readRawBody, verifyFathomSignature } from "../_meeting-integrations.js";
-import { base44Client, base44MeetingToCrm } from "../_base44.js";
+import { base44ApiClient, base44Client, base44MeetingToCrm, fetchBase44Function } from "../_base44.js";
 
 export const config = {
   api: {
@@ -46,7 +46,7 @@ export default async function handler(req, res) {
 
 async function forwardToBase44Webhook(req, res, rawBody) {
   const base44 = base44Client();
-  const response = await base44.functions.fetch("/fathomWebhook", {
+  const response = await fetchBase44Function("fathomWebhook", {
     method: "POST",
     headers: {
       "content-type": req.headers["content-type"] || "application/json",
@@ -59,7 +59,7 @@ async function forwardToBase44Webhook(req, res, rawBody) {
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) return json(res, response.status, payload);
 
-  const base44Meetings = await base44.entities.Meeting.list("-created_date", 25);
+  const base44Meetings = await base44ApiClient(base44).entities.Meeting.list("-created_date", 25);
   const data = await readCrmData();
   data.meetings ||= [];
   let synced = 0;

@@ -19,6 +19,10 @@ export function base44Client() {
   });
 }
 
+export function base44ApiClient(client = base44Client()) {
+  return process.env.BASE44_SERVICE_TOKEN ? client.asServiceRole : client;
+}
+
 export function base44ServerUrl() {
   const value = String(process.env.BASE44_SERVER_URL || "https://base44.app").trim().replace(/\/$/, "");
   try {
@@ -30,21 +34,55 @@ export function base44ServerUrl() {
   }
 }
 
+export function base44AppBaseUrl() {
+  const value = String(process.env.BASE44_APP_BASE_URL || "").trim().replace(/\/$/, "");
+  if (!value) return "";
+  try {
+    return new URL(value).origin;
+  } catch {
+    return "";
+  }
+}
+
 export function base44Diagnostics() {
   const appId = process.env.BASE44_APP_ID || "";
   const serverUrl = base44ServerUrl();
+  const appBaseUrl = base44AppBaseUrl();
   return {
     configured: Boolean(appId),
     appIdPresent: Boolean(appId),
     appIdPreview: appId ? `${appId.slice(0, 4)}...${appId.slice(-4)}` : "",
     serverUrl,
-    appBaseUrlPresent: Boolean(process.env.BASE44_APP_BASE_URL),
+    appBaseUrlPresent: Boolean(appBaseUrl),
+    appFunctionUrl: appBaseUrl ? `${appBaseUrl}/functions/fathomWebhook` : "",
+    appApiFunctionUrl: appBaseUrl ? `${appBaseUrl}/api/functions/fathomWebhook` : "",
     functionsVersionPresent: Boolean(process.env.BASE44_FUNCTIONS_VERSION),
     accessTokenPresent: Boolean(process.env.BASE44_ACCESS_TOKEN || process.env.BASE44_TOKEN),
     serviceTokenPresent: Boolean(process.env.BASE44_SERVICE_TOKEN),
     invokeLlmUrl: appId ? `${serverUrl}/api/apps/${appId}/integration-endpoints/Core/InvokeLLM` : "",
     importFathomFunctionUrl: appId ? `${serverUrl}/api/apps/${appId}/functions/importFathomMeetings` : "",
   };
+}
+
+export async function fetchBase44Function(functionName, init = {}) {
+  const appId = process.env.BASE44_APP_ID || "";
+  if (!appId) {
+    const error = new Error("BASE44_APP_ID is not configured");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const path = `/api/apps/${encodeURIComponent(appId)}/functions/${encodeURIComponent(functionName)}`;
+  const headers = new Headers(init.headers || {});
+  headers.set("X-App-Id", appId);
+  if (process.env.BASE44_FUNCTIONS_VERSION) headers.set("Base44-Functions-Version", process.env.BASE44_FUNCTIONS_VERSION);
+  const token = process.env.BASE44_SERVICE_TOKEN || process.env.BASE44_ACCESS_TOKEN || process.env.BASE44_TOKEN || "";
+  if (token && !headers.has("authorization")) headers.set("authorization", `Bearer ${token}`);
+
+  return await fetch(`${base44ServerUrl()}${path}`, {
+    ...init,
+    headers,
+  });
 }
 
 export function base44ErrorMessage(error, operation = "Base44 request") {

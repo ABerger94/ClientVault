@@ -1,7 +1,7 @@
 import { json, requireAdmin } from "../_admin-auth.js";
 import { readCrmData, writeCrmData } from "../_db.js";
 import { meetingExists, normalizeFathomMeeting } from "../_meeting-integrations.js";
-import { base44Client, base44MeetingToCrm } from "../_base44.js";
+import { base44ApiClient, base44Client, base44MeetingToCrm } from "../_base44.js";
 
 export default async function handler(req, res) {
   const session = requireAdmin(req, res);
@@ -68,8 +68,9 @@ async function importViaFathomApi(session) {
 
 async function importViaBase44(req, res, session) {
   const base44 = base44Client();
-  const invokeResult = await base44.functions.invoke("importFathomMeetings", {});
-  const base44Meetings = await base44.entities.Meeting.list("-created_date", 100);
+  const client = base44ApiClient(base44);
+  const invokeResult = await client.functions.invoke("importFathomMeetings", {});
+  const base44Meetings = await client.entities.Meeting.list("-created_date", 100);
   const data = await readCrmData();
   data.meetings ||= [];
 

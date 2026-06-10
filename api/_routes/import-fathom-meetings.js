@@ -9,35 +9,61 @@ export default async function handler(req, res) {
   if (req.method !== "POST") return json(res, 405, { error: "Method not allowed" });
   try {
     if (process.env.BASE44_APP_ID && String(process.env.BASE44_FATHOM_MODE || "").toLowerCase() === "remote") {
-      return await importViaBase44(req, res, session);
+      try {
+        return await importViaBase44(req, res, session);
+      } catch (error) {
+        if (!process.env.FATHOM_API_KEY) {
+          return json(res, error.status || error.statusCode || 500, {
+            error: base44ImportErrorMessage(error),
+            base44Status: error.status || error.statusCode || null,
+          });
+        }
+        const fallback = await importViaFathomApi(session);
+        return json(res, 200, {
+          ...fallback,
+          mode: "fathom-api-fallback",
+          base44Error: base44ImportErrorMessage(error),
+          base44Status: error.status || error.statusCode || null,
+        });
+      }
     }
-    if (!process.env.FATHOM_API_KEY) return json(res, 400, { error: "FATHOM_API_KEY is not configured" });
-    const response = await fetch("https://api.fathom.ai/external/v1/meetings?include_transcript=true&include_summary=true&include_action_items=true", {
-      headers: { "X-Api-Key": process.env.FATHOM_API_KEY },
-    });
-    if (!response.ok) {
-      const detail = await response.text();
-      return json(res, 502, { error: `Fathom API error: ${response.status} ${detail}` });
-    }
-
-    const payload = await response.json();
-    const fathomMeetings = payload.items || [];
-    const data = await readCrmData();
-    data.meetings ||= [];
-
-    let imported = 0;
-    fathomMeetings.forEach((item) => {
-      const meeting = normalizeFathomMeeting(item);
-      if (meetingExists(data.meetings, meeting)) return;
-      data.meetings.push(meeting);
-      imported += 1;
-    });
-
-    if (imported) await writeCrmData(data, session.email, `Imported ${imported} Fathom meeting${imported === 1 ? "" : "s"}`);
-    return json(res, 200, { imported, totalInFathom: fathomMeetings.length });
+    return json(res, 200, await importViaFathomApi(session));
   } catch (error) {
     return json(res, error.statusCode || 500, { error: error.message || "Fathom import failed" });
   }
+}
+
+async function importViaFathomApi(session) {
+  if (!process.env.FATHOM_API_KEY) {
+    const error = new Error("FATHOM_API_KEY is not configured");
+    error.statusCode = 400;
+    throw error;
+  }
+  const response = await fetch("https://api.fathom.ai/external/v1/meetings?include_transcript=true&include_summary=true&include_action_items=true", {
+    headers: { "X-Api-Key": process.env.FATHOM_API_KEY },
+  });
+  if (!response.ok) {
+    const detail = await response.text();
+    const error = new Error(`Fathom API error: ${response.status} ${detail}`);
+    error.statusCode = 502;
+    throw error;
+  }
+
+  const payload = await response.json();
+  const fathomMeetings = payload.items || [];
+  const data = await readCrmData();
+  data.meetings ||= [];
+
+  let imported = 0;
+  fathomMeetings.forEach((item) => {
+    const meeting = normalizeFathomMeeting(item);
+    if (meetingExists(data.meetings, meeting)) return;
+    data.meetings.push(meeting);
+    imported += 1;
+  });
+
+  if (imported) await writeCrmData(data, session.email, `Imported ${imported} Fathom meeting${imported === 1 ? "" : "s"}`);
+  return { mode: "fathom-api", imported, totalInFathom: fathomMeetings.length };
 }
 
 async function importViaBase44(req, res, session) {
@@ -62,4 +88,11 @@ async function importViaBase44(req, res, session) {
     synced,
     imported: synced,
   });
+}
+
+function base44ImportErrorMessage(error) {
+  if ((error.status || error.statusCode) === 404) {
+    return "Base44 function importFathomMeetings returned 404. Check BASE44_APP_ID, BASE44_SERVER_URL, BASE44_FUNCTIONS_VERSION, and that the Base44 app has deployed a function named importFathomMeetings.";
+  }
+  return error.message || "Base44 Fathom import failed";
 }

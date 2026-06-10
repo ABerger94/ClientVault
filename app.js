@@ -3198,6 +3198,7 @@ async function submitMeetingChat(event) {
   const form = event.currentTarget;
   const meetingId = form.dataset.meetingChat;
   const question = String(new FormData(form).get("question") || "").trim();
+  const meeting = state.data.meetings.find((item) => item.id === meetingId);
   if (!meetingId || !question) return;
   try {
     showToast("Asking Base44...");
@@ -3205,7 +3206,7 @@ async function submitMeetingChat(event) {
       method: "POST",
       headers: { "content-type": "application/json" },
       credentials: "same-origin",
-      body: JSON.stringify({ meetingId, question }),
+      body: JSON.stringify({ meetingId, question, meeting }),
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(payload.error || payload.detail || `Meeting chat failed with ${response.status}`);

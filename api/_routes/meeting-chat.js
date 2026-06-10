@@ -21,7 +21,7 @@ export default async function handler(req, res) {
 
       const data = await readCrmData();
       data.meetingChats ||= [];
-      const meeting = (data.meetings || []).find((item) => item.id === meetingId);
+      const meeting = (data.meetings || []).find((item) => item.id === meetingId) || body.meeting;
       if (!meeting) return json(res, 404, { error: "Meeting not found" });
 
       const userMessage = chatMessage(meetingId, "user", question);

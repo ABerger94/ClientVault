@@ -1591,16 +1591,13 @@ function meetingCards(meetings) {
               <span class="eyebrow">Transcript</span>
               ${hasTranscript ? `<p class="meeting-transcript">${escapeHtml(meeting.transcript)}</p>` : `<p class="muted">Add a transcript in Edit to generate structured notes.</p>`}
             </div>
-            <div class="meeting-section">
-              <span class="eyebrow">Insights</span>
-              ${hasInsights ? meetingInsightsHtml(meeting, actionItems) : `<p class="muted">Generate insights after a transcript is added.</p>`}
-            </div>
+            ${meetingInsightsPanel(meeting, actionItems, hasTranscript, hasInsights)}
           </div>
           ${hasTranscript ? meetingChatHtml(meeting) : ""}
           <div class="inline-actions">
             ${meeting.status !== "Confirmed" ? `<button class="btn secondary" data-confirm-meeting="${meeting.id}">Confirm</button>` : ""}
             <button class="btn secondary" data-calendar-meeting="${meeting.id}">Calendar</button>
-            ${hasTranscript ? `<button class="btn secondary" data-analyze-meeting="${meeting.id}">Generate Notes</button>` : ""}
+            ${hasTranscript ? `<button class="btn secondary" data-analyze-meeting="${meeting.id}">${hasInsights ? "Re-run AI" : "Generate AI Insights"}</button>` : ""}
             ${meeting.followUpEmailDraft ? `<button class="btn secondary" data-copy-followup="${meeting.id}">Copy Follow-up</button>` : ""}
             ${hasInsights ? `<button class="btn secondary" data-export-meeting-notes="${meeting.id}">Export Notes</button>` : ""}
             <button class="btn secondary" data-edit="meeting" data-id="${meeting.id}">Edit</button>
@@ -1610,6 +1607,43 @@ function meetingCards(meetings) {
       `;
     })
     .join("");
+}
+
+function meetingInsightsPanel(meeting, actionItems, hasTranscript, hasInsights) {
+  if (!hasTranscript) {
+    return `
+      <div class="meeting-section meeting-insights-panel">
+        <span class="eyebrow">AI Insights</span>
+        <div class="insights-empty">
+          <strong>No transcript yet</strong>
+          <p class="muted">Record, upload, or paste a transcript to get AI insights.</p>
+        </div>
+      </div>
+    `;
+  }
+  if (!hasInsights) {
+    return `
+      <div class="meeting-section meeting-insights-panel">
+        <div class="insights-head">
+          <span class="eyebrow">AI Insights</span>
+        </div>
+        <div class="insights-empty">
+          <strong>Ready to analyze</strong>
+          <p class="muted">Transcript captured. Run AI to extract summary, decisions, talking points, action items, and a follow-up email draft.</p>
+          <button class="btn" data-analyze-meeting="${meeting.id}">Generate AI Insights</button>
+        </div>
+      </div>
+    `;
+  }
+  return `
+    <div class="meeting-section meeting-insights-panel">
+      <div class="insights-head">
+        <span class="eyebrow">AI Insights</span>
+        <button class="btn secondary mini-btn" data-analyze-meeting="${meeting.id}">Re-run AI</button>
+      </div>
+      ${meetingInsightsHtml(meeting, actionItems)}
+    </div>
+  `;
 }
 
 function meetingChatHtml(meeting) {
@@ -1632,27 +1666,53 @@ function meetingChatHtml(meeting) {
 
 function meetingInsightsHtml(meeting, actionItems = parseActionItems(meeting.actionItems)) {
   return `
-    ${meeting.summary ? `<p><strong>Summary</strong><br>${escapeHtml(meeting.summary)}</p>` : ""}
-    ${listSection("Key decisions", splitLines(meeting.keyDecisions))}
-    ${listSection("Talking points", splitLines(meeting.talkingPoints))}
+    ${meeting.summary ? insightSection("Summary", "summary", `<p>${escapeHtml(meeting.summary)}</p>`) : ""}
+    ${insightListSection("Key Decisions", "decisions", splitLines(meeting.keyDecisions), true)}
+    ${insightListSection("Talking Points", "talking", splitLines(meeting.talkingPoints), false, false)}
     ${actionItems.length ? `
-      <div class="meeting-action-list">
-        <strong>Action items</strong>
+      <details class="insight-section" open>
+        <summary><span>Action Items</span></summary>
+        <div class="meeting-action-list">
         ${actionItems.map((item, index) => `
           <button class="action-item ${item.completed ? "done" : ""}" data-meeting-id="${meeting.id}" data-action-item="${index}">
             <span>${item.completed ? "[x]" : "[ ]"}</span>
-            <span>${escapeHtml(item.task || "Untitled action")}${item.owner ? ` <em>${escapeHtml(item.owner)}</em>` : ""}${item.dueDate ? ` <em>${escapeHtml(item.dueDate)}</em>` : ""}</span>
+            <span>
+              ${escapeHtml(item.task || "Untitled action")}
+              <span class="action-meta">
+                ${item.owner ? `<em>${escapeHtml(item.owner)}</em>` : ""}
+                ${item.dueDate ? `<em>${escapeHtml(item.dueDate)}</em>` : ""}
+              </span>
+            </span>
           </button>
         `).join("")}
-      </div>
+        </div>
+      </details>
     ` : ""}
-    ${meeting.followUpEmailDraft ? `<details><summary>Follow-up email draft</summary><pre>${escapeHtml(meeting.followUpEmailDraft)}</pre></details>` : ""}
+    ${meeting.followUpEmailDraft ? insightSection("Follow-up Email Draft", "email", `
+      <div class="followup-box">
+        <pre>${escapeHtml(meeting.followUpEmailDraft)}</pre>
+        <button class="btn secondary mini-btn" data-copy-followup="${meeting.id}">Copy</button>
+      </div>
+    `, false) : ""}
   `;
 }
 
-function listSection(title, items) {
+function insightSection(title, type, body, open = true) {
+  return `
+    <details class="insight-section insight-${type}" ${open ? "open" : ""}>
+      <summary><span>${escapeHtml(title)}</span></summary>
+      <div class="insight-body">${body}</div>
+    </details>
+  `;
+}
+
+function insightListSection(title, type, items, numbered = false, open = true) {
   if (!items.length) return "";
-  return `<p><strong>${title}</strong></p><ul>${items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`;
+  return insightSection(title, type, `
+    <${numbered ? "ol" : "ul"} class="${numbered ? "numbered-list" : "bullet-list"}">
+      ${items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
+    </${numbered ? "ol" : "ul"}>
+  `, open);
 }
 
 function upcomingEvents() {

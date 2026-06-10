@@ -1041,6 +1041,80 @@ textarea:focus {
   gap: 8px;
 }
 
+.meeting-insights-panel {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+}
+
+.insights-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.insights-empty {
+  display: grid;
+  justify-items: center;
+  gap: 9px;
+  padding: 28px 12px;
+  text-align: center;
+}
+
+.insights-empty p {
+  max-width: 420px;
+}
+
+.insight-section {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+}
+
+.insight-section summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 42px;
+  padding: 10px 12px;
+  cursor: pointer;
+  font-weight: 850;
+}
+
+.insight-section summary::after {
+  content: "+";
+  color: var(--muted);
+  font-weight: 900;
+}
+
+.insight-section[open] summary::after {
+  content: "-";
+}
+
+.insight-body {
+  display: grid;
+  gap: 10px;
+  padding: 0 12px 12px;
+}
+
+.numbered-list,
+.bullet-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.numbered-list {
+  padding-left: 22px;
+}
+
+.bullet-list {
+  padding-left: 18px;
+}
+
 .action-item {
   width: 100%;
   display: grid;
@@ -1063,21 +1137,42 @@ textarea:focus {
 .action-item em {
   display: inline-block;
   margin-left: 6px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: var(--panel-soft);
   color: var(--muted);
   font-size: 12px;
   text-decoration: none;
 }
 
-.meeting-section details {
-  margin-top: 10px;
+.action-meta {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-left: 4px;
 }
 
+.followup-box {
+  position: relative;
+}
+
+.followup-box pre,
 .meeting-section pre {
   max-height: 260px;
   overflow: auto;
   white-space: pre-wrap;
   font: inherit;
   font-size: 13px;
+  margin: 0;
+  padding: 12px;
+  border-radius: 6px;
+  background: var(--panel-soft);
+}
+
+.followup-box .btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
 }
 
 .meeting-chat {

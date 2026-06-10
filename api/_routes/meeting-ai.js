@@ -1,5 +1,5 @@
 import { json, readBody, requireAdmin } from "../_admin-auth.js";
-import { base44Client } from "../_base44.js";
+import { base44Client, base44ErrorMessage } from "../_base44.js";
 
 export default async function handler(req, res) {
   const session = requireAdmin(req, res);
@@ -12,13 +12,21 @@ export default async function handler(req, res) {
     const result = await invokeMeetingLLM(meeting);
     return json(res, 200, { result });
   } catch (error) {
-    return json(res, error.statusCode || 500, { error: error.message || "Meeting AI failed" });
+    if ((error.status || error.statusCode) === 404) {
+      return json(res, 200, {
+        result: localMeetingAnalysis(error.meeting || {}),
+        base44Error: base44ErrorMessage(error, "Base44 InvokeLLM"),
+      });
+    }
+    return json(res, error.statusCode || error.status || 500, { error: error.message || "Meeting AI failed" });
   }
 }
 
 async function invokeMeetingLLM(meeting) {
   const base44 = base44Client();
-  const result = await base44.integrations.Core.InvokeLLM({
+  let result;
+  try {
+    result = await base44.integrations.Core.InvokeLLM({
     prompt: `You are an expert meeting analyst. Analyze the following meeting transcript and extract structured information.
 
 Meeting: "${meeting.title || meeting.type || "Meeting"}"
@@ -63,7 +71,11 @@ Generate comprehensive meeting insights.`,
         },
       },
     },
-  });
+    });
+  } catch (error) {
+    error.meeting = meeting;
+    throw error;
+  }
   return normalizeAnalysis(result);
 }
 
@@ -87,4 +99,37 @@ function normalizeAnalysis(value = {}) {
 function toLines(value) {
   if (Array.isArray(value)) return value.map((item) => String(item || "").trim()).filter(Boolean).join("\n");
   return String(value || "").trim();
+}
+
+function localMeetingAnalysis(meeting) {
+  const sentences = String(meeting.transcript || "")
+    .replace(/\s+/g, " ")
+    .split(/(?<=[.!?])\s+/)
+    .map((sentence) => sentence.trim())
+    .filter(Boolean);
+  const decisionWords = /\b(decided|decision|approved|agreed|confirmed|selected|finalized)\b/i;
+  const actionWords = /\b(action|todo|follow up|send|schedule|prepare|review|share|draft|complete|own|owner)\b/i;
+  const actionItems = sentences.filter((sentence) => actionWords.test(sentence)).slice(0, 8).map((task) => ({
+    task,
+    owner: "",
+    dueDate: "",
+    completed: false,
+  }));
+  return {
+    summary: sentences.slice(0, 3).join(" ") || "Base44 is not reachable yet, so this local fallback could not generate a full summary.",
+    keyDecisions: sentences.filter((sentence) => decisionWords.test(sentence)).slice(0, 6).join("\n"),
+    talkingPoints: sentences.filter((sentence) => !decisionWords.test(sentence)).slice(0, 8).join("\n"),
+    actionItems,
+    followUpEmailDraft: [
+      "Hi there,",
+      "",
+      `Thanks for joining ${meeting.title || meeting.type || "the meeting"}.`,
+      "",
+      sentences.length ? `Quick recap: ${sentences.slice(0, 3).join(" ")}` : "Quick recap is below.",
+      "",
+      actionItems.length ? `Next steps:\n${actionItems.map((item) => `- ${item.task}`).join("\n")}` : "Next steps will be confirmed shortly.",
+      "",
+      "Best,",
+    ].join("\n"),
+  };
 }

@@ -14,9 +14,45 @@ export function base44Client() {
     serviceToken: process.env.BASE44_SERVICE_TOKEN || "",
     functionsVersion: process.env.BASE44_FUNCTIONS_VERSION || "",
     appBaseUrl: process.env.BASE44_APP_BASE_URL || "",
-    serverUrl: process.env.BASE44_SERVER_URL || "https://base44.app",
+    serverUrl: base44ServerUrl(),
     requiresAuth: false,
   });
+}
+
+export function base44ServerUrl() {
+  const value = String(process.env.BASE44_SERVER_URL || "https://base44.app").trim().replace(/\/$/, "");
+  try {
+    const url = new URL(value);
+    if (url.pathname && url.pathname !== "/") return `${url.origin}${url.pathname.replace(/\/api\/?$/, "")}`;
+    return url.origin;
+  } catch {
+    return "https://base44.app";
+  }
+}
+
+export function base44Diagnostics() {
+  const appId = process.env.BASE44_APP_ID || "";
+  const serverUrl = base44ServerUrl();
+  return {
+    configured: Boolean(appId),
+    appIdPresent: Boolean(appId),
+    appIdPreview: appId ? `${appId.slice(0, 4)}...${appId.slice(-4)}` : "",
+    serverUrl,
+    appBaseUrlPresent: Boolean(process.env.BASE44_APP_BASE_URL),
+    functionsVersionPresent: Boolean(process.env.BASE44_FUNCTIONS_VERSION),
+    accessTokenPresent: Boolean(process.env.BASE44_ACCESS_TOKEN || process.env.BASE44_TOKEN),
+    serviceTokenPresent: Boolean(process.env.BASE44_SERVICE_TOKEN),
+    invokeLlmUrl: appId ? `${serverUrl}/api/apps/${appId}/integration-endpoints/Core/InvokeLLM` : "",
+    importFathomFunctionUrl: appId ? `${serverUrl}/api/apps/${appId}/functions/importFathomMeetings` : "",
+  };
+}
+
+export function base44ErrorMessage(error, operation = "Base44 request") {
+  if ((error.status || error.statusCode) === 404) {
+    const diagnostics = base44Diagnostics();
+    return `${operation} returned 404. The SDK tried ${diagnostics.invokeLlmUrl || diagnostics.importFathomFunctionUrl || "a Base44 endpoint"}. Check that BASE44_SERVER_URL is the Base44 API host, BASE44_APP_ID is the app id, and the requested Base44 integration/function exists for that app.`;
+  }
+  return error.message || `${operation} failed`;
 }
 
 export function base44StorageMode() {

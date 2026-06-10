@@ -1,7 +1,7 @@
 import { json, readBody, requireAdmin } from "../_admin-auth.js";
 import { readCrmData, writeCrmData } from "../_db.js";
 import { randomUUID } from "node:crypto";
-import { base44Client } from "../_base44.js";
+import { base44Client, base44ErrorMessage } from "../_base44.js";
 
 export default async function handler(req, res) {
   const session = requireAdmin(req, res);
@@ -64,9 +64,7 @@ Provide a concise, accurate answer based solely on the meeting content above.`;
   } catch (error) {
     if ((error.status || error.statusCode) === 404) {
       return [
-        "Base44 returned 404 for InvokeLLM, so I could not reach the configured Base44 integration endpoint.",
-        "",
-        "Check BASE44_APP_ID, BASE44_SERVER_URL, BASE44_ACCESS_TOKEN or BASE44_SERVICE_TOKEN, and that Core InvokeLLM is enabled for that Base44 app.",
+        base44ErrorMessage(error, "Base44 InvokeLLM"),
         "",
         fallbackAnswer(meeting, question),
       ].join("\n");

@@ -1953,6 +1953,7 @@ function settingsView() {
           <div class="section-actions settings-actions">
             <button class="btn secondary" data-copy-webhook="${escapeHtml(`${location.origin}/api/fathom-webhook`)}">Copy Webhook URL</button>
             <button class="btn secondary" data-import-fathom>Import Fathom Meetings</button>
+            <a class="btn secondary" href="/api/base44-diagnostics" target="_blank" rel="noreferrer">Base44 Diagnostics</a>
           </div>
           <p>Set <code>BASE44_APP_ID</code>, <code>BASE44_SERVER_URL</code>, optional <code>BASE44_ACCESS_TOKEN</code>/<code>BASE44_SERVICE_TOKEN</code>, and <code>BASE44_FATHOM_MODE=remote</code> to use your deployed Base44 backend functions.</p>
         </div>

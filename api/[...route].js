@@ -2,6 +2,7 @@ import adminLogin from "./_routes/admin-login.js";
 import adminLogout from "./_routes/admin-logout.js";
 import adminSession from "./_routes/admin-session.js";
 import assetFile from "./_routes/asset-file.js";
+import base44Diagnostics from "./_routes/base44-diagnostics.js";
 import clientAssetUpload from "./_routes/client-asset-upload.js";
 import crmData from "./_routes/crm-data.js";
 import fathomWebhook from "./_routes/fathom-webhook.js";
@@ -27,6 +28,7 @@ const handlers = {
   "admin-logout": adminLogout,
   "admin-session": adminSession,
   "asset-file": assetFile,
+  "base44-diagnostics": base44Diagnostics,
   "client-asset-upload": clientAssetUpload,
   "crm-data": crmData,
   "fathom-webhook": fathomWebhook,

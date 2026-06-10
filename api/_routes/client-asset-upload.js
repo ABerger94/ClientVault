@@ -1,6 +1,6 @@
 import { put } from "@vercel/blob";
 import { randomBytes } from "node:crypto";
-import { json, readBody, requireAdmin } from "./_admin-auth.js";
+import { json, readBody, requireAdmin } from "../_admin-auth.js";
 import { assetFileUrl } from "./asset-file.js";
 
 const MAX_ASSET_BYTES = 15 * 1024 * 1024;

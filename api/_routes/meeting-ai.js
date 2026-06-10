@@ -1,5 +1,5 @@
-import { json, readBody, requireAdmin } from "./_admin-auth.js";
-import { base44Client } from "./_base44.js";
+import { json, readBody, requireAdmin } from "../_admin-auth.js";
+import { base44Client } from "../_base44.js";
 
 export default async function handler(req, res) {
   const session = requireAdmin(req, res);

@@ -1,7 +1,7 @@
 import { get } from "@vercel/blob";
 import { Readable } from "node:stream";
-import { getSession, json, readBody } from "./_admin-auth.js";
-import { authenticatePortalClient } from "./_portal-store.js";
+import { getSession, json, readBody } from "../_admin-auth.js";
+import { authenticatePortalClient } from "../_portal-store.js";
 
 export default async function handler(req, res) {
   try {

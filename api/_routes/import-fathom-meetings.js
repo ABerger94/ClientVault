@@ -1,7 +1,7 @@
-import { json, requireAdmin } from "./_admin-auth.js";
-import { readCrmData, writeCrmData } from "./_db.js";
-import { meetingExists, normalizeFathomMeeting } from "./_meeting-integrations.js";
-import { base44Client, base44MeetingToCrm } from "./_base44.js";
+import { json, requireAdmin } from "../_admin-auth.js";
+import { readCrmData, writeCrmData } from "../_db.js";
+import { meetingExists, normalizeFathomMeeting } from "../_meeting-integrations.js";
+import { base44Client, base44MeetingToCrm } from "../_base44.js";
 
 export default async function handler(req, res) {
   const session = requireAdmin(req, res);

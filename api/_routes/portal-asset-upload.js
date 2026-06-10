@@ -1,7 +1,7 @@
 import { put } from "@vercel/blob";
 import { randomBytes } from "node:crypto";
-import { authenticatePortalClient, json } from "./_portal-store.js";
-import { readCrmData, writeCrmData } from "./_db.js";
+import { authenticatePortalClient, json } from "../_portal-store.js";
+import { readCrmData, writeCrmData } from "../_db.js";
 
 const MAX_ASSET_BYTES = 15 * 1024 * 1024;
 

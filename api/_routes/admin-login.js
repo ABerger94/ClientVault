@@ -1,5 +1,5 @@
-import { appendAudit, readCrmData } from "./_db.js";
-import { json, readBody, setSessionCookie, validateLogin } from "./_admin-auth.js";
+import { appendAudit, readCrmData } from "../_db.js";
+import { json, readBody, setSessionCookie, validateLogin } from "../_admin-auth.js";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") return json(res, 405, { error: "Method not allowed" });

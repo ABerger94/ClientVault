@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { authenticatePortalClient, json, readBody } from "./_portal-store.js";
-import { readCrmData, writeCrmData } from "./_db.js";
+import { authenticatePortalClient, json, readBody } from "../_portal-store.js";
+import { readCrmData, writeCrmData } from "../_db.js";
 
 const ALLOWED_TYPES = new Set([
   "meeting_request",

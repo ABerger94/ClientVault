@@ -1,5 +1,5 @@
-import { readCrmData } from "./_db.js";
-import { getSession, json } from "./_admin-auth.js";
+import { readCrmData } from "../_db.js";
+import { getSession, json } from "../_admin-auth.js";
 
 export default async function handler(req, res) {
   if (req.method !== "GET") return json(res, 405, { error: "Method not allowed" });

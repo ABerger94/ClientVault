@@ -1,5 +1,5 @@
-import { readCrmData, writeCrmData } from "./_db.js";
-import { json, readBody, requireAdmin } from "./_admin-auth.js";
+import { readCrmData, writeCrmData } from "../_db.js";
+import { json, readBody, requireAdmin } from "../_admin-auth.js";
 
 export default async function handler(req, res) {
   const session = requireAdmin(req, res);

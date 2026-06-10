@@ -1,4 +1,4 @@
-import { authenticatePortalClient, json, portalPath, readBody, readJson } from "./_portal-store.js";
+import { authenticatePortalClient, json, portalPath, readBody, readJson } from "../_portal-store.js";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {

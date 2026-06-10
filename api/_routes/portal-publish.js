@@ -8,7 +8,7 @@ import {
   verifyAdminSecret,
   writeIndex,
   writeJson,
-} from "./_portal-store.js";
+} from "../_portal-store.js";
 
 const DEFAULT_FROM = "ClientVault <onboarding@resend.dev>";
 

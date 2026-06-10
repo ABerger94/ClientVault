@@ -1,7 +1,7 @@
-import { json } from "./_admin-auth.js";
-import { readCrmData, writeCrmData } from "./_db.js";
-import { meetingExists, normalizeFathomMeeting, readRawBody, verifyFathomSignature } from "./_meeting-integrations.js";
-import { base44Client, base44MeetingToCrm } from "./_base44.js";
+import { json } from "../_admin-auth.js";
+import { readCrmData, writeCrmData } from "../_db.js";
+import { meetingExists, normalizeFathomMeeting, readRawBody, verifyFathomSignature } from "../_meeting-integrations.js";
+import { base44Client, base44MeetingToCrm } from "../_base44.js";
 
 export const config = {
   api: {

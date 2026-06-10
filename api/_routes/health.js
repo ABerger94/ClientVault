@@ -1,6 +1,6 @@
-import { hasDatabase, readCrmData } from "./_db.js";
-import { json } from "./_admin-auth.js";
-import { readIndex } from "./_portal-store.js";
+import { hasDatabase, readCrmData } from "../_db.js";
+import { json } from "../_admin-auth.js";
+import { readIndex } from "../_portal-store.js";
 
 function hasBlob() {
   return Boolean(process.env.BLOB_READ_WRITE_TOKEN);

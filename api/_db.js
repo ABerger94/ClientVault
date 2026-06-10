@@ -22,6 +22,7 @@ export function blankData() {
     onboarding: [],
     questionnaires: [],
     meetings: [],
+    meetingChats: [],
     notes: [],
     clientAssets: [],
     portalUpdateIds: [],

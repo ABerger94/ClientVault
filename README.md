@@ -30,6 +30,19 @@ Optional email invite variables:
 - `CLIENTVAULT_PUBLIC_URL`
 - `CLIENTVAULT_SUPPORT_EMAIL`
 
+Optional Base44/Sage meeting integrations:
+
+- `BASE44_APP_ID`
+- `BASE44_SERVER_URL` such as `https://base44.app`
+- `BASE44_APP_BASE_URL`
+- `BASE44_FUNCTIONS_VERSION`
+- `BASE44_ACCESS_TOKEN` or `BASE44_TOKEN`
+- `BASE44_SERVICE_TOKEN` if your Base44 backend exposes service-role access
+- `BASE44_FATHOM_MODE=remote` to call `base44.functions.invoke("importFathomMeetings", {})` and forward `/api/fathom-webhook` to the Base44 `fathomWebhook` function
+- `FATHOM_API_KEY` and `FATHOM_WEBHOOK_SECRET` for the local Vercel Fathom fallback mode
+
+Meeting note generation and meeting chat use the Base44 SDK call `base44.integrations.Core.InvokeLLM(...)`.
+
 Recommended before long-term production use:
 
 - `POSTGRES_URL`

@@ -983,6 +983,142 @@ textarea:focus {
   margin: 16px 0;
 }
 
+.meeting-workspace {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+
+.meeting-topline {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.meeting-topline > div {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.meeting-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  gap: 12px;
+}
+
+.meeting-section {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel-soft);
+}
+
+.meeting-section p,
+.meeting-section ul,
+.meeting-section pre {
+  margin-bottom: 0;
+}
+
+.meeting-section ul {
+  padding-left: 18px;
+}
+
+.meeting-transcript {
+  max-height: 220px;
+  overflow: auto;
+  white-space: pre-wrap;
+  line-height: 1.55;
+}
+
+.meeting-action-list {
+  display: grid;
+  gap: 8px;
+}
+
+.action-item {
+  width: 100%;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--ink);
+  text-align: left;
+}
+
+.action-item.done {
+  color: var(--muted);
+  background: #eef7f1;
+  text-decoration: line-through;
+}
+
+.action-item em {
+  display: inline-block;
+  margin-left: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  text-decoration: none;
+}
+
+.meeting-section details {
+  margin-top: 10px;
+}
+
+.meeting-section pre {
+  max-height: 260px;
+  overflow: auto;
+  white-space: pre-wrap;
+  font: inherit;
+  font-size: 13px;
+}
+
+.meeting-chat {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+}
+
+.meeting-chat summary {
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.meeting-chat-log {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.meeting-chat-log p {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  line-height: 1.45;
+}
+
+.chat-user {
+  background: var(--brand-soft);
+}
+
+.chat-assistant {
+  background: var(--panel-soft);
+}
+
+.meeting-chat-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
 @media (max-width: 980px) {
   .app-grid {
     grid-template-columns: 1fr;
@@ -999,6 +1135,7 @@ textarea:focus {
 
   .layout-two,
   .login-choice-grid,
+  .meeting-grid,
   .portal-grid,
   .task-grid,
   .stats-grid {

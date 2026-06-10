@@ -9,6 +9,7 @@ const STAGES = ["Lead", "Qualified", "Proposal", "Won"];
 const PRIORITIES = ["Low", "Normal", "High"];
 const PROJECT_STATUSES = ["Not Started", "In Progress", "Review", "Approved", "Delivered"];
 const MEETING_TYPES = ["Welcome Call", "Strategy Meeting", "Check-in", "Review"];
+const MEETING_PLATFORMS = ["Zoom", "Teams", "Google Meet", "Phone", "In Person", "Other"];
 const ONBOARDING_STAGES = [
   {
     id: "welcome",
@@ -84,6 +85,7 @@ const blankData = () => ({
   onboarding: [],
   questionnaires: [],
   meetings: [],
+  meetingChats: [],
   notes: [],
   clientAssets: [],
   portalUpdateIds: [],
@@ -163,6 +165,7 @@ function hydrateData(data) {
   next.onboarding ||= [];
   next.questionnaires ||= [];
   next.meetings ||= [];
+  next.meetingChats ||= [];
   next.notes ||= [];
   next.clientAssets ||= [];
   next.portalUpdateIds ||= [];
@@ -562,6 +565,27 @@ function bindShell() {
   app.querySelectorAll("[data-confirm-meeting]").forEach((button) => {
     button.addEventListener("click", () => confirmMeeting(button.dataset.confirmMeeting));
   });
+  app.querySelectorAll("[data-calendar-meeting]").forEach((button) => {
+    button.addEventListener("click", () => downloadMeetingCalendar(button.dataset.calendarMeeting));
+  });
+  app.querySelectorAll("[data-analyze-meeting]").forEach((button) => {
+    button.addEventListener("click", () => analyzeMeetingTranscript(button.dataset.analyzeMeeting));
+  });
+  app.querySelectorAll("[data-copy-followup]").forEach((button) => {
+    button.addEventListener("click", () => copyMeetingFollowup(button.dataset.copyFollowup));
+  });
+  app.querySelectorAll("[data-export-meeting-notes]").forEach((button) => {
+    button.addEventListener("click", () => exportMeetingNotes(button.dataset.exportMeetingNotes));
+  });
+  app.querySelectorAll("[data-import-fathom]").forEach((button) => {
+    button.addEventListener("click", importFathomMeetings);
+  });
+  app.querySelectorAll("[data-copy-webhook]").forEach((button) => {
+    button.addEventListener("click", () => copyText(button.dataset.copyWebhook, "Webhook URL copied."));
+  });
+  app.querySelectorAll("[data-action-item]").forEach((button) => {
+    button.addEventListener("click", () => toggleMeetingActionItem(button.dataset.meetingId, Number(button.dataset.actionItem)));
+  });
   app.querySelectorAll("[data-open-asset]").forEach((button) => {
     button.addEventListener("click", () => openAssetFile(button.dataset.openAsset));
   });
@@ -576,6 +600,9 @@ function bindShell() {
   });
   app.querySelectorAll("form[data-form]").forEach((form) => {
     form.addEventListener("submit", submitForm);
+  });
+  app.querySelectorAll("form[data-meeting-chat]").forEach((form) => {
+    form.addEventListener("submit", submitMeetingChat);
   });
   const search = app.querySelector("[data-action='search']");
   if (search) {
@@ -1507,7 +1534,7 @@ function scheduleView() {
   `;
 }
 
-function meetingCards(meetings) {
+function legacyMeetingCards(meetings) {
   if (!meetings.length) return `<div class="empty">No meetings scheduled.</div>`;
   return meetings
     .map((meeting) => {
@@ -1527,6 +1554,105 @@ function meetingCards(meetings) {
       `;
     })
     .join("");
+}
+
+function meetingCards(meetings) {
+  if (!meetings.length) return `<div class="empty">No meetings scheduled.</div>`;
+  return meetings
+    .map((meeting) => {
+      const client = getClient(meeting.clientId);
+      const actionItems = parseActionItems(meeting.actionItems);
+      const hasTranscript = Boolean((meeting.transcript || "").trim());
+      const hasInsights = Boolean(meeting.aiProcessed || meeting.summary || actionItems.length);
+      return `
+        <article class="meeting-workspace">
+          <div class="meeting-topline">
+            <div>
+              <strong>${escapeHtml(meeting.title || meeting.type)}</strong>
+              <span class="row-sub">${escapeHtml(client?.name || "No client")} - ${formatDateTime(meeting.datetime)}${meeting.platform ? ` - ${escapeHtml(meeting.platform)}` : ""}${meeting.durationMinutes ? ` - ${Number(meeting.durationMinutes)}m` : ""}</span>
+              ${meeting.attendees ? `<span class="row-sub">Attendees: ${escapeHtml(meeting.attendees)}</span>` : ""}
+            </div>
+            <span class="pill ${meeting.status === "Confirmed" || meeting.status === "Completed" ? "active" : meeting.status === "Canceled" ? "risk" : ""}">${escapeHtml(meeting.status || "Proposed")}</span>
+          </div>
+          ${meeting.notes || meeting.agenda ? `
+            <div class="meeting-section">
+              <span class="eyebrow">Agenda</span>
+              <p>${escapeHtml(meeting.agenda || meeting.notes)}</p>
+            </div>
+          ` : ""}
+          ${meeting.prepMaterial ? `
+            <div class="meeting-section">
+              <span class="eyebrow">Prep</span>
+              <p>${escapeHtml(meeting.prepMaterial)}</p>
+            </div>
+          ` : ""}
+          <div class="meeting-grid">
+            <div class="meeting-section">
+              <span class="eyebrow">Transcript</span>
+              ${hasTranscript ? `<p class="meeting-transcript">${escapeHtml(meeting.transcript)}</p>` : `<p class="muted">Add a transcript in Edit to generate structured notes.</p>`}
+            </div>
+            <div class="meeting-section">
+              <span class="eyebrow">Insights</span>
+              ${hasInsights ? meetingInsightsHtml(meeting, actionItems) : `<p class="muted">Generate insights after a transcript is added.</p>`}
+            </div>
+          </div>
+          ${hasTranscript ? meetingChatHtml(meeting) : ""}
+          <div class="inline-actions">
+            ${meeting.status !== "Confirmed" ? `<button class="btn secondary" data-confirm-meeting="${meeting.id}">Confirm</button>` : ""}
+            <button class="btn secondary" data-calendar-meeting="${meeting.id}">Calendar</button>
+            ${hasTranscript ? `<button class="btn secondary" data-analyze-meeting="${meeting.id}">Generate Notes</button>` : ""}
+            ${meeting.followUpEmailDraft ? `<button class="btn secondary" data-copy-followup="${meeting.id}">Copy Follow-up</button>` : ""}
+            ${hasInsights ? `<button class="btn secondary" data-export-meeting-notes="${meeting.id}">Export Notes</button>` : ""}
+            <button class="btn secondary" data-edit="meeting" data-id="${meeting.id}">Edit</button>
+            <button class="btn secondary" data-delete="meeting" data-id="${meeting.id}">Delete</button>
+          </div>
+        </article>
+      `;
+    })
+    .join("");
+}
+
+function meetingChatHtml(meeting) {
+  const messages = (state.data.meetingChats || []).filter((message) => message.meetingId === meeting.id).slice(-6);
+  return `
+    <details class="meeting-chat">
+      <summary>Ask about this meeting</summary>
+      <div class="meeting-chat-log">
+        ${messages.length ? messages.map((message) => `
+          <p class="${message.role === "user" ? "chat-user" : "chat-assistant"}"><strong>${message.role === "user" ? "You" : "Assistant"}:</strong> ${escapeHtml(message.content)}</p>
+        `).join("") : `<p class="muted">Try: What were the main action items?</p>`}
+      </div>
+      <form data-meeting-chat="${meeting.id}" class="meeting-chat-form">
+        <input name="question" placeholder="Ask anything about the transcript..." required />
+        <button class="btn secondary" type="submit">Ask</button>
+      </form>
+    </details>
+  `;
+}
+
+function meetingInsightsHtml(meeting, actionItems = parseActionItems(meeting.actionItems)) {
+  return `
+    ${meeting.summary ? `<p><strong>Summary</strong><br>${escapeHtml(meeting.summary)}</p>` : ""}
+    ${listSection("Key decisions", splitLines(meeting.keyDecisions))}
+    ${listSection("Talking points", splitLines(meeting.talkingPoints))}
+    ${actionItems.length ? `
+      <div class="meeting-action-list">
+        <strong>Action items</strong>
+        ${actionItems.map((item, index) => `
+          <button class="action-item ${item.completed ? "done" : ""}" data-meeting-id="${meeting.id}" data-action-item="${index}">
+            <span>${item.completed ? "[x]" : "[ ]"}</span>
+            <span>${escapeHtml(item.task || "Untitled action")}${item.owner ? ` <em>${escapeHtml(item.owner)}</em>` : ""}${item.dueDate ? ` <em>${escapeHtml(item.dueDate)}</em>` : ""}</span>
+          </button>
+        `).join("")}
+      </div>
+    ` : ""}
+    ${meeting.followUpEmailDraft ? `<details><summary>Follow-up email draft</summary><pre>${escapeHtml(meeting.followUpEmailDraft)}</pre></details>` : ""}
+  `;
+}
+
+function listSection(title, items) {
+  if (!items.length) return "";
+  return `<p><strong>${title}</strong></p><ul>${items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`;
 }
 
 function upcomingEvents() {
@@ -1760,6 +1886,15 @@ function settingsView() {
         <div class="section-actions settings-actions">
           <button class="btn" data-action="export">Export JSON Backup</button>
           <label class="btn secondary">Import Backup<input data-action="import" type="file" accept="application/json" hidden /></label>
+        </div>
+        <div class="secure-note space-top">
+          <p><strong>Base44 and Fathom integration</strong></p>
+          <p>Webhook URL for Fathom: <code>${escapeHtml(`${location.origin}/api/fathom-webhook`)}</code></p>
+          <div class="section-actions settings-actions">
+            <button class="btn secondary" data-copy-webhook="${escapeHtml(`${location.origin}/api/fathom-webhook`)}">Copy Webhook URL</button>
+            <button class="btn secondary" data-import-fathom>Import Fathom Meetings</button>
+          </div>
+          <p>Set <code>BASE44_APP_ID</code>, <code>BASE44_SERVER_URL</code>, optional <code>BASE44_ACCESS_TOKEN</code>/<code>BASE44_SERVICE_TOKEN</code>, and <code>BASE44_FATHOM_MODE=remote</code> to use your deployed Base44 backend functions.</p>
         </div>
         <p><strong>Records:</strong> ${state.data.clients.length} clients, ${state.data.contacts.length} contacts, ${state.data.deals.length} deals, ${state.data.tasks.length} tasks, ${state.data.clientAssets.length} assets, ${state.data.notes.length} notes.</p>
         <p><strong>Signed in:</strong> ${escapeHtml(state.sessionEmail || "Admin")}</p>
@@ -2020,9 +2155,20 @@ function meetingForm() {
       ${select("type", "Type", MEETING_TYPES, defaultType)}
       ${input("title", "Title", meeting.title, true)}
       ${input("datetime", "Date and time", meeting.datetime || "", true, "datetime-local")}
+      ${select("platform", "Platform", MEETING_PLATFORMS, meeting.platform || "Zoom")}
+      ${input("durationMinutes", "Duration minutes", meeting.durationMinutes || 60, false, "number")}
       ${select("status", "Status", ["Proposed", "Confirmed", "Completed", "Canceled"], meeting.status || "Proposed")}
       ${select("proposedBy", "Proposed by", ["Agency", "Client"], meeting.proposedBy || "Agency")}
-      ${textarea("notes", "Agenda or notes", meeting.notes, "span-2")}
+      ${input("attendees", "Attendees", meeting.attendees || "", false, "text", "span-2")}
+      ${textarea("agenda", "Agenda", meeting.agenda || meeting.notes, "span-2")}
+      ${textarea("prepMaterial", "Prep material", meeting.prepMaterial, "span-2")}
+      ${textarea("transcript", "Transcript", meeting.transcript, "span-2")}
+      ${textarea("summary", "Summary", meeting.summary, "span-2")}
+      ${textarea("keyDecisions", "Key decisions, one per line", meeting.keyDecisions, "span-2")}
+      ${textarea("talkingPoints", "Talking points, one per line", meeting.talkingPoints, "span-2")}
+      ${textarea("actionItems", "Action items JSON or one per line", formatActionItemsForEdit(meeting.actionItems), "span-2")}
+      ${textarea("followUpEmailDraft", "Follow-up email draft", meeting.followUpEmailDraft, "span-2")}
+      ${textarea("notes", "Internal notes", meeting.notes, "span-2")}
       <button class="btn span-2" type="submit">Save Meeting</button>
     </form>
   `;
@@ -2212,6 +2358,17 @@ function normalizeRecord(type, values, existing = {}) {
   if (type === "meeting") {
     base.status = base.status || "Proposed";
     base.proposedBy = base.proposedBy || "Agency";
+    base.durationMinutes = Math.max(0, Number(base.durationMinutes || 60));
+    base.attendees = String(base.attendees || "").trim();
+    base.agenda = String(base.agenda || base.notes || "").trim();
+    base.transcript = String(base.transcript || "").trim();
+    base.summary = String(base.summary || "").trim();
+    base.keyDecisions = splitLines(base.keyDecisions).join("\n");
+    base.talkingPoints = splitLines(base.talkingPoints).join("\n");
+    base.actionItems = parseActionItems(base.actionItems);
+    base.followUpEmailDraft = String(base.followUpEmailDraft || "").trim();
+    base.prepMaterial = String(base.prepMaterial || "").trim();
+    base.aiProcessed = Boolean(base.aiProcessed || base.summary || base.keyDecisions || base.talkingPoints || base.actionItems.length || base.followUpEmailDraft);
   }
   if (type === "task") {
     base.done = Boolean(existing.done);
@@ -2619,6 +2776,40 @@ function confirmLatestMeetingHistory(checklist, meetingType) {
   checklist[field] = JSON.stringify(history);
 }
 
+function splitLines(value) {
+  if (Array.isArray(value)) return value.map((item) => String(item || "").trim()).filter(Boolean);
+  return String(value || "")
+    .split(/\r?\n/)
+    .map((item) => item.replace(/^[-*]\s*/, "").trim())
+    .filter(Boolean);
+}
+
+function parseActionItems(value) {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => (typeof item === "string" ? { task: item } : item))
+      .filter((item) => item && item.task)
+      .map((item) => ({
+        task: String(item.task || "").trim(),
+        owner: String(item.owner || "").trim(),
+        dueDate: String(item.dueDate || item.due_date || "").trim(),
+        completed: Boolean(item.completed),
+      }));
+  }
+  const raw = String(value || "").trim();
+  if (!raw) return [];
+  try {
+    return parseActionItems(JSON.parse(raw));
+  } catch {
+    return splitLines(raw).map((task) => ({ task, owner: "", dueDate: "", completed: false }));
+  }
+}
+
+function formatActionItemsForEdit(value) {
+  const items = parseActionItems(value);
+  return items.length ? JSON.stringify(items, null, 2) : "";
+}
+
 function syncWorkflowFlags(type, record) {
   if (!record.clientId) return;
   if (type === "questionnaire") {
@@ -2741,6 +2932,231 @@ async function confirmMeeting(meetingId) {
   }
   await saveData("Confirmed meeting");
   render();
+}
+
+function padDate(value) {
+  return String(value).padStart(2, "0");
+}
+
+function toIcsDate(value) {
+  const date = new Date(value);
+  return `${date.getUTCFullYear()}${padDate(date.getUTCMonth() + 1)}${padDate(date.getUTCDate())}T${padDate(date.getUTCHours())}${padDate(date.getUTCMinutes())}00Z`;
+}
+
+function escapeIcs(value) {
+  return String(value || "")
+    .replaceAll("\\", "\\\\")
+    .replaceAll(";", "\\;")
+    .replaceAll(",", "\\,")
+    .replaceAll("\n", "\\n");
+}
+
+function downloadTextFile(filename, content, type) {
+  const blob = new Blob([content], { type });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function downloadMeetingCalendar(meetingId) {
+  const meeting = state.data.meetings.find((item) => item.id === meetingId);
+  if (!meeting || !meeting.datetime) return;
+  const start = new Date(meeting.datetime);
+  const end = new Date(start.getTime() + Number(meeting.durationMinutes || 60) * 60 * 1000);
+  const description = [
+    meeting.agenda ? `Agenda: ${meeting.agenda}` : "",
+    meeting.attendees ? `Attendees: ${meeting.attendees}` : "",
+    meeting.summary ? `Summary: ${meeting.summary}` : "",
+  ].filter(Boolean).join("\n\n");
+  const ics = [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//ClientVault//Meeting//EN",
+    "CALSCALE:GREGORIAN",
+    "METHOD:PUBLISH",
+    "BEGIN:VEVENT",
+    `UID:${meeting.id}@clientvault`,
+    `DTSTAMP:${toIcsDate(new Date())}`,
+    `DTSTART:${toIcsDate(start)}`,
+    `DTEND:${toIcsDate(end)}`,
+    `SUMMARY:${escapeIcs(meeting.title || meeting.type)}`,
+    `DESCRIPTION:${escapeIcs(description)}`,
+    meeting.platform ? `LOCATION:${escapeIcs(meeting.platform)}` : "",
+    "END:VEVENT",
+    "END:VCALENDAR",
+  ].filter(Boolean).join("\r\n");
+  downloadTextFile(`${(meeting.title || meeting.type || "meeting").replace(/[^a-z0-9]/gi, "_")}.ics`, ics, "text/calendar;charset=utf-8");
+}
+
+async function copyMeetingFollowup(meetingId) {
+  const meeting = state.data.meetings.find((item) => item.id === meetingId);
+  if (!meeting?.followUpEmailDraft) return;
+  try {
+    await copyText(meeting.followUpEmailDraft, "");
+  } catch {
+    downloadTextFile(`${(meeting.title || meeting.type || "meeting").replace(/[^a-z0-9]/gi, "_")}_followup.txt`, meeting.followUpEmailDraft, "text/plain;charset=utf-8");
+  }
+  showToast("Follow-up draft copied.");
+}
+
+async function copyText(text, message = "Copied.") {
+  await navigator.clipboard.writeText(text);
+  if (message) showToast(message);
+}
+
+function exportMeetingNotes(meetingId) {
+  const meeting = state.data.meetings.find((item) => item.id === meetingId);
+  if (!meeting) return;
+  const client = getClient(meeting.clientId);
+  const actionItems = parseActionItems(meeting.actionItems);
+  const content = [
+    `# ${meeting.title || meeting.type || "Meeting"}`,
+    "",
+    `Client: ${client?.name || "No client"}`,
+    `When: ${formatDateTime(meeting.datetime)}`,
+    meeting.platform ? `Platform: ${meeting.platform}` : "",
+    meeting.attendees ? `Attendees: ${meeting.attendees}` : "",
+    "",
+    meeting.agenda ? `## Agenda\n${meeting.agenda}` : "",
+    meeting.prepMaterial ? `## Prep\n${meeting.prepMaterial}` : "",
+    meeting.summary ? `## Summary\n${meeting.summary}` : "",
+    splitLines(meeting.keyDecisions).length ? `## Key Decisions\n${splitLines(meeting.keyDecisions).map((item) => `- ${item}`).join("\n")}` : "",
+    splitLines(meeting.talkingPoints).length ? `## Talking Points\n${splitLines(meeting.talkingPoints).map((item) => `- ${item}`).join("\n")}` : "",
+    actionItems.length ? `## Action Items\n${actionItems.map((item) => `- ${item.completed ? "[x]" : "[ ]"} ${item.task}${item.owner ? ` (${item.owner})` : ""}${item.dueDate ? ` - ${item.dueDate}` : ""}`).join("\n")}` : "",
+    meeting.followUpEmailDraft ? `## Follow-up Email Draft\n${meeting.followUpEmailDraft}` : "",
+    meeting.transcript ? `## Transcript\n${meeting.transcript}` : "",
+  ].filter(Boolean).join("\n\n");
+  downloadTextFile(`${(meeting.title || meeting.type || "meeting").replace(/[^a-z0-9]/gi, "_")}_notes.md`, content, "text/markdown;charset=utf-8");
+}
+
+async function toggleMeetingActionItem(meetingId, index) {
+  const meeting = state.data.meetings.find((item) => item.id === meetingId);
+  if (!meeting) return;
+  const items = parseActionItems(meeting.actionItems);
+  if (!items[index]) return;
+  items[index].completed = !items[index].completed;
+  meeting.actionItems = items;
+  await saveData("Updated meeting action item");
+  render();
+}
+
+async function analyzeMeetingTranscript(meetingId) {
+  const meeting = state.data.meetings.find((item) => item.id === meetingId);
+  if (!meeting?.transcript) return;
+  try {
+    showToast("Generating notes with Base44...");
+    const response = await fetch("/api/meeting-ai", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({ meeting }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || "Base44 meeting analysis failed");
+    applyMeetingAnalysis(meeting, payload.result || {});
+    await saveData("Generated meeting notes with Base44");
+    showToast("Meeting notes generated.");
+    render();
+    return;
+  } catch (error) {
+    showToast(`${error.message || "Base44 unavailable"} Using local fallback.`);
+  }
+  const sentences = String(meeting.transcript)
+    .replace(/\s+/g, " ")
+    .split(/(?<=[.!?])\s+/)
+    .map((sentence) => sentence.trim())
+    .filter(Boolean);
+  const summarySentences = sentences.slice(0, 3);
+  const decisionWords = /\b(decided|decision|approved|agreed|confirmed|selected|finalized)\b/i;
+  const actionWords = /\b(action|todo|follow up|send|schedule|prepare|review|share|draft|complete|own|owner)\b/i;
+  const keyDecisions = sentences.filter((sentence) => decisionWords.test(sentence)).slice(0, 6);
+  const talkingPoints = sentences.filter((sentence) => !decisionWords.test(sentence)).slice(0, 8);
+  const actionItems = sentences
+    .filter((sentence) => actionWords.test(sentence))
+    .slice(0, 8)
+    .map((task) => ({ task, owner: "", dueDate: "", completed: false }));
+  const client = getClient(meeting.clientId);
+  meeting.summary = summarySentences.join(" ") || meeting.summary;
+  meeting.keyDecisions = keyDecisions.join("\n");
+  meeting.talkingPoints = talkingPoints.join("\n");
+  meeting.actionItems = actionItems;
+  meeting.followUpEmailDraft = [
+    `Hi ${client?.name || "there"},`,
+    "",
+    `Thanks for joining ${meeting.title || meeting.type}.`,
+    "",
+    meeting.summary ? `Quick recap: ${meeting.summary}` : "Quick recap is below.",
+    "",
+    actionItems.length ? `Next steps:\n${actionItems.map((item) => `- ${item.task}`).join("\n")}` : "Next steps will be confirmed shortly.",
+    "",
+    "Best,",
+  ].join("\n");
+  meeting.aiProcessed = true;
+  if (meeting.status === "Confirmed") meeting.status = "Completed";
+  syncWorkflowFlags("meeting", meeting);
+  await saveData("Generated meeting notes");
+  showToast("Meeting notes generated.");
+  render();
+}
+
+function applyMeetingAnalysis(meeting, result) {
+  meeting.summary = result.summary || meeting.summary || "";
+  meeting.keyDecisions = result.keyDecisions || result.key_decisions || meeting.keyDecisions || "";
+  meeting.talkingPoints = result.talkingPoints || result.talking_points || meeting.talkingPoints || "";
+  meeting.actionItems = parseActionItems(result.actionItems || result.action_items || meeting.actionItems);
+  meeting.followUpEmailDraft = result.followUpEmailDraft || result.follow_up_email_draft || meeting.followUpEmailDraft || "";
+  meeting.aiProcessed = true;
+  if (meeting.status === "Confirmed") meeting.status = "Completed";
+  syncWorkflowFlags("meeting", meeting);
+}
+
+async function importFathomMeetings() {
+  try {
+    showToast("Importing Fathom meetings...");
+    const response = await fetch("/api/import-fathom-meetings", {
+      method: "POST",
+      credentials: "same-origin",
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || "Fathom import failed");
+    const refresh = await fetch("/api/crm-data", { credentials: "same-origin" });
+    const refreshed = await refresh.json().catch(() => ({}));
+    if (refresh.ok && refreshed.data) state.data = hydrateData(refreshed.data);
+    const count = payload.imported || payload.synced || 0;
+    showToast(`Imported ${count} meeting${count === 1 ? "" : "s"}.`);
+    render();
+  } catch (error) {
+    showToast(error.message || "Fathom import failed.");
+  }
+}
+
+async function submitMeetingChat(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const meetingId = form.dataset.meetingChat;
+  const question = String(new FormData(form).get("question") || "").trim();
+  if (!meetingId || !question) return;
+  try {
+    showToast("Asking Base44...");
+    const response = await fetch("/api/meeting-chat", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({ meetingId, question }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || "Meeting chat failed");
+    state.data.meetingChats ||= [];
+    state.data.meetingChats.push(...(payload.messages || []));
+    state.data.meetingChats = state.data.meetingChats.slice(-500);
+    showToast("Meeting answer added.");
+    render();
+  } catch (error) {
+    showToast(error.message || "Meeting chat failed.");
+  }
 }
 
 function exportBackup() {
